@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { markDirty } from '../sync/changes';
+import { base64ToBytes, bytesToBase64 } from '../utils/base64';
 import { buildSnapshot, mergeSnapshot, validateSnapshot, type ImageMeta, type Snapshot } from './merge';
 import type { StudyDB } from './schema';
 import type { ImageRecord, ReviewLog } from './types';
@@ -74,8 +75,99 @@ export interface ParsedBackup {
   skipped: number;
 }
 
+/**
+ * 文本备份：一个 JSON 文本文件，照片以 base64 放在 imageData 里。
+ * 安卓 Chrome 的系统分享不允许分享 ZIP，但允许 .txt，所以分享到微信用这种格式。
+ */
+export async function exportTextBackup(db: StudyDB, onProgress: Progress = () => {}): Promise<Blob> {
+  onProgress('读取数据…', 0);
+  const { snapshot, blobs } = await buildSnapshot(db);
+  const imageData: Record<string, string> = {};
+  let i = 0;
+  for (const [id, blob] of blobs) {
+    imageData[id] = bytesToBase64(new Uint8Array(await blobToArrayBuffer(blob)));
+    if (i % 10 === 0) onProgress(`打包图片 ${i + 1}/${blobs.size}`, (i / Math.max(1, blobs.size)) * 0.9);
+    i++;
+  }
+  const json: BackupJson & { imageData: Record<string, string> } = {
+    app: BACKUP_APP,
+    version: BACKUP_VERSION,
+    exportedAt: Date.now(),
+    ...snapshot,
+    imageData,
+  };
+  onProgress('生成文件…', 0.95);
+  return new Blob([JSON.stringify(json)], { type: 'text/plain' });
+}
+
+export function textBackupFileName(date = new Date()): string {
+  return backupFileName(date).replace(/\.zip$/, '.txt');
+}
+
+function checkHeader(json: unknown): Record<string, unknown> {
+  if (typeof json !== 'object' || json === null || (json as { app?: unknown }).app !== BACKUP_APP)
+    throw new Error('不是本应用的备份文件');
+  const version = (json as { version?: unknown }).version;
+  if (!SUPPORTED_VERSIONS.includes(version as number)) throw new Error(`备份版本 ${String(version)} 不受支持`);
+  return json as Record<string, unknown>;
+}
+
+/** 按照片元数据取出图片内容；取不到的计为缺图 */
+async function collectImages(
+  metas: ImageMeta[],
+  read: (m: ImageMeta) => Promise<Uint8Array | ArrayBuffer | null>,
+  onProgress: Progress,
+): Promise<{ images: ImageRecord[]; kept: ImageMeta[]; missingImages: number }> {
+  const images: ImageRecord[] = [];
+  const kept: ImageMeta[] = [];
+  let missingImages = 0;
+  for (let i = 0; i < metas.length; i++) {
+    const m = metas[i];
+    const data = await read(m);
+    if (!data) {
+      missingImages += 1;
+      continue;
+    }
+    const blob = new Blob([data], { type: 'image/jpeg' });
+    images.push({ ...m, blob, size: blob.size });
+    kept.push(m);
+    if (i % 10 === 0) onProgress(`读取图片 ${i + 1}/${metas.length}`, (i / Math.max(1, metas.length)) * 0.8);
+  }
+  return { images, kept, missingImages };
+}
+
+/** 解析备份文件，自动识别 ZIP 与文本两种格式 */
 export async function parseBackup(file: Blob, onProgress: Progress = () => {}): Promise<ParsedBackup> {
-  onProgress('读取压缩包…', 0);
+  onProgress('读取备份…', 0);
+  const head = new Uint8Array(await blobToArrayBuffer(file.slice(0, 2)));
+  const isZip = head[0] === 0x50 && head[1] === 0x4b; // "PK"
+
+  if (!isZip) {
+    let json: unknown;
+    try {
+      json = JSON.parse(new TextDecoder().decode(await blobToArrayBuffer(file)));
+    } catch {
+      throw new Error('不是有效的备份文件（需要 .zip 或 .txt 备份）');
+    }
+    const raw = checkHeader(json);
+    const { snapshot, skipped } = validateSnapshot(raw);
+    const data = (typeof raw.imageData === 'object' && raw.imageData !== null ? raw.imageData : {}) as Record<string, unknown>;
+    const { images, kept, missingImages } = await collectImages(
+      snapshot.images,
+      async (m) => {
+        const b64 = data[m.id];
+        if (typeof b64 !== 'string') return null;
+        try {
+          return base64ToBytes(b64);
+        } catch {
+          return null;
+        }
+      },
+      onProgress,
+    );
+    return { snapshot: { ...snapshot, images: kept }, images, missingImages, skipped };
+  }
+
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(file);
@@ -90,29 +182,15 @@ export async function parseBackup(file: Blob, onProgress: Progress = () => {}): 
   } catch {
     throw new Error('backup.json 不是合法 JSON');
   }
-  if (typeof json !== 'object' || json === null || (json as { app?: unknown }).app !== BACKUP_APP)
-    throw new Error('不是本应用的备份文件');
-  const version = (json as { version?: unknown }).version;
-  if (!SUPPORTED_VERSIONS.includes(version as number)) throw new Error(`备份版本 ${String(version)} 不受支持`);
-
-  const { snapshot, skipped } = validateSnapshot(json as Record<string, unknown>);
-
-  const images: ImageRecord[] = [];
-  let missingImages = 0;
-  const kept: ImageMeta[] = [];
-  for (let i = 0; i < snapshot.images.length; i++) {
-    const m = snapshot.images[i];
-    const f = zip.file(`images/${m.id}.jpg`);
-    if (!f) {
-      missingImages += 1;
-      continue;
-    }
-    const blob = new Blob([await f.async('arraybuffer')], { type: 'image/jpeg' });
-    images.push({ ...m, blob, size: blob.size });
-    kept.push(m);
-    if (i % 10 === 0) onProgress(`读取图片 ${i + 1}/${snapshot.images.length}`, (i / Math.max(1, snapshot.images.length)) * 0.8);
-  }
-
+  const { snapshot, skipped } = validateSnapshot(checkHeader(json));
+  const { images, kept, missingImages } = await collectImages(
+    snapshot.images,
+    async (m) => {
+      const f = zip.file(`images/${m.id}.jpg`);
+      return f ? f.async('arraybuffer') : null;
+    },
+    onProgress,
+  );
   return { snapshot: { ...snapshot, images: kept }, images, missingImages, skipped };
 }
 

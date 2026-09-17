@@ -1109,3 +1109,8 @@ details summary {
   cursor: pointer;
   color: var(--primary);
 }
+
+.backup-reminder {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}

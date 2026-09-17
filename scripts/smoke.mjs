@@ -15,6 +15,20 @@ function check(name, ok, extra = '') {
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const ctx = await browser.newContext({ viewport: { width: 400, height: 800 }, acceptDownloads: true, isMobile: true, hasTouch: true });
+// 模拟安卓 Chrome 的系统分享：允许 .txt、不允许 .zip，记录分享出去的文件
+await ctx.addInitScript(() => {
+  window.__shared = [];
+  Object.defineProperty(navigator, 'canShare', {
+    configurable: true,
+    value: (data) => !!data?.files?.length && data.files.every((f) => f.name.endsWith('.txt')),
+  });
+  Object.defineProperty(navigator, 'share', {
+    configurable: true,
+    value: async (data) => {
+      for (const f of data.files ?? []) window.__shared.push(f);
+    },
+  });
+});
 const page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
@@ -152,8 +166,8 @@ check('时间线显示', (await page.locator('.timeline-item').count()) === 3);
 
 // ---- 导出 → 清空 → 导入 ----
 await page.click('a[href="#/settings"]');
-await page.waitForSelector('text=导出备份');
-const [download] = await Promise.all([page.waitForEvent('download'), page.click('text=导出备份')]);
+await page.waitForSelector('text=导出 ZIP 到下载');
+const [download] = await Promise.all([page.waitForEvent('download'), page.click('text=导出 ZIP 到下载')]);
 const zipPath = path.join(OUT, download.suggestedFilename());
 await download.saveAs(zipPath);
 check('导出 ZIP', fs.existsSync(zipPath) && fs.statSync(zipPath).size > 1000, `${download.suggestedFilename()} ${fs.statSync(zipPath).size}B`);
@@ -321,6 +335,46 @@ if (process.env.SMOKE_GH_TOKEN && process.env.SMOKE_GH_REPO) {
   check('令牌保存在本机 meta 表', exported.includes('syncConfig'), JSON.stringify(exported));
   await page.screenshot({ path: path.join(OUT, 'sync.png'), fullPage: true });
 }
+
+// ---- 备份到微信 ----
+await page.evaluate(async () => {
+  const db = window.__db;
+  await db.meta.delete('lastBackupAt');
+  await db.meta.delete('lastSyncAt');
+  await db.meta.delete('backupSnoozeUntil');
+  await db.notes.toCollection().modify({ createdAt: Date.now() - 10 * 86400000 });
+});
+await page.click('a[href="#/"]');
+await page.waitForSelector('.backup-reminder');
+check('10 天没备份时首页出现提醒', (await page.locator('.backup-reminder b').textContent()) === '还没有备份过');
+await page.screenshot({ path: path.join(OUT, 'backup-reminder.png'), fullPage: true });
+await page.click('.backup-reminder button:has-text("现在备份")');
+await page.waitForSelector('.toast:has-text("已备份")');
+await page.waitForSelector('.backup-reminder', { state: 'detached' });
+const shared = await page.evaluate(async () => {
+  const f = window.__shared[window.__shared.length - 1];
+  const text = await f.text();
+  const json = JSON.parse(text);
+  return { name: f.name, type: f.type, notes: json.notes.length, images: Object.keys(json.imageData).length };
+});
+check('分享出去的是 .txt 文本备份且含照片', shared.name.endsWith('.txt') && shared.notes === 3 && shared.images === 2, JSON.stringify(shared));
+check('备份后提醒消失', true);
+
+// 用分享出去的文本备份导入到清空后的本机
+const sharedPath = path.join(OUT, shared.name);
+const sharedText = await page.evaluate(async () => window.__shared[window.__shared.length - 1].text());
+fs.writeFileSync(sharedPath, sharedText);
+await page.click('a[href="#/settings"]');
+await page.click('text=清空全部数据');
+await page.click('.dialog button:has-text("清空")');
+await page.waitForSelector('text=已清空全部数据');
+await page.click('label:has-text("覆盖本机")');
+await page.locator('input[type=file][accept*="zip"]').setInputFiles(sharedPath);
+await page.click('.dialog button:has-text("导入")');
+await page.waitForSelector('text=导入完成');
+const txtImport = (await page.locator('text=导入：笔记').textContent()) ?? '';
+check('从 .txt 备份恢复', /笔记 3 · 卡片 2 · 照片 2/.test(txtImport), txtImport);
+check('设置页显示上次备份时间', !(await page.locator('text=上次备份：从未').count()));
 
 await page.click('a[href="#/settings"]');
 await page.screenshot({ path: path.join(OUT, 'settings.png'), fullPage: true });

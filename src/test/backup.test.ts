@@ -92,7 +92,7 @@ describe('backup', () => {
   });
 
   it('拒绝非法文件', async () => {
-    await expect(parseBackup(new Blob(['hello']))).rejects.toThrow('ZIP');
+    await expect(parseBackup(new Blob(['hello']))).rejects.toThrow('不是有效的备份文件');
     const zip = new JSZip();
     zip.file('backup.json', JSON.stringify({ app: 'other', version: 1 }));
     await expect(parseBackup(await zip.generateAsync({ type: 'blob' }))).rejects.toThrow('本应用');
