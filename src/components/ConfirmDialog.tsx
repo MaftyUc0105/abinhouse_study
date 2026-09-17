@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 interface Props {
   open: boolean;
   title: string;
@@ -19,6 +21,15 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onCancel]);
+
   if (!open) return null;
   return (
     <div className="overlay" onClick={onCancel}>

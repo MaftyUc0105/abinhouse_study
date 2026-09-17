@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { BackupPanel } from '../components/BackupShare';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SyncSettings } from '../components/SyncSettings';
+import { ReminderSettings, UpdateSettings } from '../components/NativeSettings';
+import { isNativeApp } from '../native/platform';
 import { useToast } from '../components/Toast';
 import { importBackup, type ImportMode, type ImportResult } from '../db/backup';
 import { repo } from '../db/repo';
@@ -23,16 +25,23 @@ export function SettingsPage() {
       </div>
       <SyncSettings />
       <BackupSection />
-      <StorageSection />
+      {!isNativeApp && <StorageSection />}
       <ScheduleSection key={s.updatedAt} />
-      <div className="section-title">提醒</div>
-      <div className="card small muted">
-        网页应用无法在后台定时弹通知。建议在手机闹钟里设一个固定时间（比如每晚 8 点）打开本应用；已安装到桌面时，图标角标会显示待复习数。
-      </div>
+      {isNativeApp ? (
+        <ReminderSettings />
+      ) : (
+        <>
+        <div className="section-title">提醒</div>
+        <div className="card small muted">
+          网页应用无法在后台定时弹通知。建议在手机闹钟里设一个固定时间（比如每晚 8 点）打开本应用；已安装到桌面时，图标角标会显示待复习数。
+        </div>
+        </>
+      )}
       <DangerSection onCleared={() => toast('已清空全部数据')} />
+      {isNativeApp && <UpdateSettings />}
       <div className="section-title">关于</div>
       <div className="card small muted">
-        艾宾浩斯复习本 v{__APP_VERSION__} · 数据保存在本机浏览器里；开启云端同步后会自动上传到你的 GitHub 私有仓库。
+        艾宾浩斯复习本 v{__APP_VERSION__} · 数据保存在本机{isNativeApp ? '' : '浏览器'}里；开启云端同步后会自动上传到你的 GitHub 私有仓库。
       </div>
     </div>
   );

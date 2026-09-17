@@ -1,11 +1,59 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { db } from '../db/schema';
+import { saveBackupNative, shareBackupNative, type NativeBackupResult } from '../native/nativeBackup';
+import { isNativeApp } from '../native/platform';
 import { getBackupReminder, saveBackupToPhone, snoozeBackupReminder, type SavedBackup } from '../utils/backupShare';
 import { formatBytes } from '../utils/image';
 
-/** 保存备份到手机；结果和"没有开始下载"的备用链接显示在按钮下方 */
-export function BackupPanel({ compact = false }: { compact?: boolean }) {
+/** App 里：直接分享到微信 / 网盘，或保存到手机文档目录 */
+function NativeBackupPanel({ compact }: { compact: boolean }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [result, setResult] = useState<NativeBackupResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const size = compact ? 'btn-sm' : '';
+
+  async function run(fn: typeof shareBackupNative) {
+    setError(null);
+    setResult(null);
+    setBusy('正在生成备份…');
+    try {
+      setResult(await fn(db, (m) => setBusy(m)));
+    } catch (e) {
+      setError(`备份失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="stack backup-panel">
+      <div className="row" style={{ flexWrap: 'nowrap' }}>
+        <button className={`btn btn-primary grow ${size}`} disabled={!!busy} onClick={() => void run(shareBackupNative)}>
+          {busy ?? '分享到微信 / 网盘'}
+        </button>
+        <button className={`btn grow ${size}`} disabled={!!busy} onClick={() => void run(saveBackupNative)}>
+          保存到手机
+        </button>
+      </div>
+      {result?.kind === 'shared' && (
+        <div className="small backup-ok">
+          已发出 {result.filename}（{formatBytes(result.size)}）。记得在微信里确认收到。
+        </div>
+      )}
+      {result?.kind === 'saved' && (
+        <div className="small backup-ok">
+          已保存 {result.filename}（{formatBytes(result.size)}）。位置：{result.location}。
+        </div>
+      )}
+      {result?.kind === 'cancelled' && <div className="small muted">已取消分享。</div>}
+      {error && <div className="error">{error}</div>}
+    </div>
+  );
+}
+
+/** 浏览器里：保存备份到手机；结果和"没有开始下载"的备用链接显示在按钮下方 */
+function WebBackupPanel({ compact }: { compact: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [saved, setSaved] = useState<SavedBackup | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +101,10 @@ export function BackupPanel({ compact = false }: { compact?: boolean }) {
   );
 }
 
+export function BackupPanel({ compact = false }: { compact?: boolean }) {
+  return isNativeApp ? <NativeBackupPanel compact={compact} /> : <WebBackupPanel compact={compact} />;
+}
+
 /** 首页备份提醒：超过 7 天没备份也没同步时出现 */
 export function BackupReminder() {
   const state = useLiveQuery(() => getBackupReminder(db), []);
@@ -75,7 +127,9 @@ export function BackupReminder() {
         )}
       </div>
       {state?.show && (
-        <div className="small muted mb-8">数据只存在这台手机上，换手机或清理浏览器会丢失。保存一份备份，再发到微信"文件传输助手"。</div>
+        <div className="small muted mb-8">
+          数据只存在这台手机上，换手机或卸载会丢失。{isNativeApp ? '发一份到微信"文件传输助手"保存。' : '保存一份备份，再发到微信"文件传输助手"。'}
+        </div>
       )}
       <BackupPanel compact />
     </div>

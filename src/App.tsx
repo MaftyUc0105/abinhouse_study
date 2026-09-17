@@ -12,9 +12,13 @@ import { StatsPage } from './pages/StatsPage';
 import { TodayPage } from './pages/TodayPage';
 import { db } from './db/schema';
 import { startAutoSync } from './sync/runner';
+import { useNativeBackButton } from './native/backButton';
+import { startReminderScheduler } from './native/reminders';
+import { UpdateNotifier } from './components/NativeSettings';
 
 function Layout() {
   const loc = useLocation();
+  useNativeBackButton();
   const hideTabs = loc.pathname.startsWith('/review');
   return (
     <>
@@ -37,10 +41,12 @@ function Layout() {
 
 export default function App() {
   useEffect(() => startAutoSync(db), []);
+  useEffect(() => startReminderScheduler(db), []);
   return (
     <HashRouter>
       <ToastProvider>
         <Layout />
+        <UpdateNotifier />
       </ToastProvider>
     </HashRouter>
   );
