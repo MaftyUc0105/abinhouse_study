@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { exportTextBackup, importBackup, parseBackup } from '../db/backup';
+import { importBackup, parseBackup } from '../db/backup';
+import { buildSnapshot } from '../db/merge';
+import { bytesToBase64 } from '../utils/base64';
 import { createRepo } from '../db/repo';
 import { StudyDB } from '../db/schema';
 import { getBackupReminder, markBackedUp, snoozeBackupReminder } from '../utils/backupShare';
@@ -10,12 +12,20 @@ const DAY = 86_400_000;
 let n = 0;
 const fresh = () => new StudyDB(`bs_${Date.now()}_${n++}`);
 
+/** 构造旧版 .txt 文本备份（照片 base64 内嵌） */
+async function textBackup(db: StudyDB): Promise<Blob> {
+  const { snapshot, blobs } = await buildSnapshot(db);
+  const imageData: Record<string, string> = {};
+  for (const [id, b] of blobs) imageData[id] = bytesToBase64(new Uint8Array(await b.arrayBuffer()));
+  return new Blob([JSON.stringify({ app: 'abinhouse_study', version: 2, exportedAt: Date.now(), ...snapshot, imageData })], { type: 'text/plain' });
+}
+
 function img(id: string, bytes = 5000) {
   return { id, blob: new Blob([new Uint8Array(bytes).map((_, i) => (i * 13) % 256)], { type: 'image/jpeg' }), width: 4, height: 4 };
 }
 
-describe('文本备份（.txt）', () => {
-  it('导出后覆盖导入，笔记、照片内容、遮挡、日志完整还原', async () => {
+describe('兼容导入 .txt 文本备份', () => {
+  it('覆盖导入后笔记、照片内容、遮挡、日志完整还原', async () => {
     const src = fresh();
     const repo = createRepo(src);
     const mask = { id: 'm', x: 0.1, y: 0.2, w: 0.3, h: 0.1 };
@@ -23,10 +33,7 @@ describe('文本备份（.txt）', () => {
     const [cid] = await repo.createCards(id, [{ question: 'q', answer: 'a' }], T);
     await repo.applyReview('card', cid, 2, T);
 
-    const blob = await exportTextBackup(src);
-    expect(blob.type).toBe('text/plain');
-    const head = new TextDecoder().decode(new Uint8Array(await blob.slice(0, 1).arrayBuffer()));
-    expect(head).toBe('{');
+    const blob = await textBackup(src);
 
     const dst = fresh();
     const r = await importBackup(dst, blob, 'replace');
@@ -43,7 +50,7 @@ describe('文本备份（.txt）', () => {
     await expect(parseBackup(new Blob(['hello']))).rejects.toThrow('不是有效的备份文件');
     const src = fresh();
     await createRepo(src).createNote({ title: 't', subject: 's', body: '', tags: [] }, [img('x')], T);
-    const json = JSON.parse(await (await exportTextBackup(src)).text());
+    const json = JSON.parse(await (await textBackup(src)).text());
     delete json.imageData.x;
     const p = await parseBackup(new Blob([JSON.stringify(json)]));
     expect(p.missingImages).toBe(1);

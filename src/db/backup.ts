@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { markDirty } from '../sync/changes';
-import { base64ToBytes, bytesToBase64 } from '../utils/base64';
+import { base64ToBytes } from '../utils/base64';
 import { buildSnapshot, mergeSnapshot, validateSnapshot, type ImageMeta, type Snapshot } from './merge';
 import type { StudyDB } from './schema';
 import type { ImageRecord, ReviewLog } from './types';
@@ -75,35 +75,6 @@ export interface ParsedBackup {
   skipped: number;
 }
 
-/**
- * 文本备份：一个 JSON 文本文件，照片以 base64 放在 imageData 里。
- * 安卓 Chrome 的系统分享不允许分享 ZIP，但允许 .txt，所以分享到微信用这种格式。
- */
-export async function exportTextBackup(db: StudyDB, onProgress: Progress = () => {}): Promise<Blob> {
-  onProgress('读取数据…', 0);
-  const { snapshot, blobs } = await buildSnapshot(db);
-  const imageData: Record<string, string> = {};
-  let i = 0;
-  for (const [id, blob] of blobs) {
-    imageData[id] = bytesToBase64(new Uint8Array(await blobToArrayBuffer(blob)));
-    if (i % 10 === 0) onProgress(`打包图片 ${i + 1}/${blobs.size}`, (i / Math.max(1, blobs.size)) * 0.9);
-    i++;
-  }
-  const json: BackupJson & { imageData: Record<string, string> } = {
-    app: BACKUP_APP,
-    version: BACKUP_VERSION,
-    exportedAt: Date.now(),
-    ...snapshot,
-    imageData,
-  };
-  onProgress('生成文件…', 0.95);
-  return new Blob([JSON.stringify(json)], { type: 'text/plain' });
-}
-
-export function textBackupFileName(date = new Date()): string {
-  return backupFileName(date).replace(/\.zip$/, '.txt');
-}
-
 function checkHeader(json: unknown): Record<string, unknown> {
   if (typeof json !== 'object' || json === null || (json as { app?: unknown }).app !== BACKUP_APP)
     throw new Error('不是本应用的备份文件');
@@ -136,7 +107,7 @@ async function collectImages(
   return { images, kept, missingImages };
 }
 
-/** 解析备份文件，自动识别 ZIP 与文本两种格式 */
+/** 解析备份文件，自动识别 ZIP 与文本（.txt，照片 base64 内嵌在 imageData）两种格式 */
 export async function parseBackup(file: Blob, onProgress: Progress = () => {}): Promise<ParsedBackup> {
   onProgress('读取备份…', 0);
   const head = new Uint8Array(await blobToArrayBuffer(file.slice(0, 2)));

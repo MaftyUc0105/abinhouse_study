@@ -3,11 +3,11 @@ import { BackupPanel } from '../components/BackupShare';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SyncSettings } from '../components/SyncSettings';
 import { useToast } from '../components/Toast';
-import { backupFileName, downloadBlob, exportBackup, importBackup, type ImportMode, type ImportResult } from '../db/backup';
+import { importBackup, type ImportMode, type ImportResult } from '../db/backup';
 import { repo } from '../db/repo';
 import { db } from '../db/schema';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LAST_BACKUP_KEY, markBackedUp } from '../utils/backupShare';
+import { LAST_BACKUP_KEY } from '../utils/backupShare';
 import { validateSettings } from '../db/seedSettings';
 import { useSettings } from '../hooks/useSettings';
 import { formatBytes } from '../utils/image';
@@ -47,20 +47,6 @@ function BackupSection() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const lastBackup = useLiveQuery(async () => (await db.meta.get(LAST_BACKUP_KEY))?.value as number | undefined, []);
 
-  async function doExport() {
-    setBusy('准备导出…');
-    try {
-      const blob = await exportBackup(db, (m) => setBusy(m));
-      downloadBlob(blob, backupFileName());
-      await markBackedUp(db);
-      toast(`已导出 ${formatBytes(blob.size)}`);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : '导出失败');
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function doImport() {
     const f = pendingFile;
     setPendingFile(null);
@@ -84,12 +70,8 @@ function BackupSection() {
       <div className="card stack">
         <BackupPanel />
         <div className="hint">
-          上次备份：{lastBackup ? new Date(lastBackup).toLocaleString('zh-CN', { hour12: false }) : '从未'}。
-          先点"准备备份文件"，再点"分享到微信 / 网盘"，在分享菜单里选微信 →"文件传输助手"。超过 7 天没备份，首页会提醒。
+          上次备份：{lastBackup ? new Date(lastBackup).toLocaleString('zh-CN', { hour12: false }) : '从未'}。超过 7 天没备份，首页会提醒。
         </div>
-        <button className="btn" disabled={!!busy} onClick={doExport}>
-          导出 ZIP 到下载
-        </button>
         <div className="row">
           <label className="row small">
             <input type="radio" checked={mode === 'merge'} onChange={() => setMode('merge')} /> 合并
@@ -113,7 +95,7 @@ function BackupSection() {
           }}
         />
         <div className="hint">
-          支持 .zip 和 .txt 备份。从微信恢复时，先在微信里打开备份文件并"保存到手机"，再在这里选择它。
+          支持 .zip 和 .txt 备份。从微信恢复时，先在微信里打开备份文件并保存到手机，再在这里选择它。
           合并：同一条笔记以修改时间较新的为准，不覆盖本机设置。覆盖：先清空本机再导入。
         </div>
         {busy && <div className="small muted">{busy}</div>}
