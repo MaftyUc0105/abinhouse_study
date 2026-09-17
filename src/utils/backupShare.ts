@@ -1,6 +1,8 @@
 /**
- * 备份到微信 / 网盘：生成备份文件后调起系统分享；不支持分享时改为下载。
- * 同时记录本机最后一次备份时间，用于首页提醒。
+ * 备份到微信 / 网盘，分两步：
+ * 1. prepareBackupFile 生成备份文件（可能要几秒）
+ * 2. 用户再点一次，shareBackupFile 调起系统分享，或 saveBackupFile 下载到手机
+ * 分两步是因为浏览器要求分享必须紧跟用户点击，生成文件耗时太久会被静默拦截。
  */
 import { backupFileName, downloadBlob, exportBackup, exportTextBackup, textBackupFileName, type Progress } from '../db/backup';
 import type { StudyDB } from '../db/schema';
@@ -9,13 +11,6 @@ export const LAST_BACKUP_KEY = 'lastBackupAt';
 export const BACKUP_SNOOZE_KEY = 'backupSnoozeUntil';
 export const REMIND_AFTER_DAYS = 7;
 const DAY = 24 * 60 * 60 * 1000;
-
-export type ShareOutcome =
-  | { kind: 'shared' }
-  | { kind: 'downloaded'; filename: string }
-  | { kind: 'cancelled' }
-  /** 文件生成太久，浏览器要求再点一次才能分享 */
-  | { kind: 'needsTap'; file: File };
 
 type ShareNavigator = Navigator & {
   canShare?: (data: { files?: File[] }) => boolean;
@@ -31,50 +26,112 @@ export function canShareFile(file: File): boolean {
   }
 }
 
+export interface ShareSupport {
+  /** 有 navigator.share */
+  shareApi: boolean;
+  /** 有 navigator.canShare */
+  canShareApi: boolean;
+  zip: boolean;
+  txt: boolean;
+  /** 已安装为桌面应用 */
+  standalone: boolean;
+  userAgent: string;
+}
+
+export function detectShareSupport(): ShareSupport {
+  const nav = navigator as ShareNavigator;
+  const zip = new File([new Uint8Array(1)], 'probe.zip', { type: 'application/zip' });
+  const txt = new File(['x'], 'probe.txt', { type: 'text/plain' });
+  let standalone = false;
+  try {
+    standalone = window.matchMedia('(display-mode: standalone)').matches;
+  } catch {
+    /* ignore */
+  }
+  return {
+    shareApi: typeof nav.share === 'function',
+    canShareApi: typeof nav.canShare === 'function',
+    zip: canShareFile(zip),
+    txt: canShareFile(txt),
+    standalone,
+    userAgent: navigator.userAgent,
+  };
+}
+
+/** 检测信息的一行摘要，出问题时让用户截图 */
+export function describeShareSupport(s: ShareSupport): string {
+  const browser =
+    /MicroMessenger/i.test(s.userAgent)
+      ? '微信内置浏览器'
+      : /HuaweiBrowser/i.test(s.userAgent)
+        ? '华为浏览器'
+        : /MiuiBrowser|XiaoMi/i.test(s.userAgent)
+          ? '小米浏览器'
+          : /EdgA/i.test(s.userAgent)
+            ? 'Edge'
+            : /SamsungBrowser/i.test(s.userAgent)
+              ? '三星浏览器'
+              : /Firefox/i.test(s.userAgent)
+                ? 'Firefox'
+                : /Chrome\/(\d+)/i.test(s.userAgent)
+                  ? `Chrome ${/Chrome\/(\d+)/i.exec(s.userAgent)![1]}`
+                  : '未知浏览器';
+  return [
+    browser,
+    s.standalone ? '桌面应用模式' : '网页模式',
+    `分享接口${s.shareApi ? '有' : '无'}`,
+    `文件分享${s.canShareApi ? '' : '检测接口无，'}${s.txt || s.zip ? `支持${s.zip ? ' zip' : ''}${s.txt ? ' txt' : ''}` : '不支持'}`,
+  ].join(' · ');
+}
+
 export async function markBackedUp(db: StudyDB, at = Date.now()) {
   await db.meta.put({ key: LAST_BACKUP_KEY, value: at });
   await db.meta.delete(BACKUP_SNOOZE_KEY);
 }
 
-/** 分享一个已经准备好的文件（需要在用户点击中调用） */
-export async function shareFile(db: StudyDB, file: File): Promise<ShareOutcome> {
+export interface PreparedBackup {
+  file: File;
+  /** 这个文件能否通过系统分享发出去 */
+  shareable: boolean;
+}
+
+/** 生成备份文件：浏览器能分享 ZIP 就用 ZIP，只能分享文本就用 .txt，都不能就生成 ZIP 供下载 */
+export async function prepareBackupFile(db: StudyDB, onProgress: Progress = () => {}): Promise<PreparedBackup> {
+  const support = detectShareSupport();
+  if (!support.zip && support.txt) {
+    const blob = await exportTextBackup(db, onProgress);
+    const file = new File([blob], textBackupFileName(), { type: 'text/plain' });
+    return { file, shareable: canShareFile(file) };
+  }
+  const blob = await exportBackup(db, onProgress);
+  const file = new File([blob], backupFileName(), { type: 'application/zip' });
+  return { file, shareable: support.zip && canShareFile(file) };
+}
+
+export type ShareOutcome =
+  | { kind: 'shared' }
+  | { kind: 'cancelled' }
+  | { kind: 'failed'; message: string };
+
+/** 调起系统分享（必须在用户点击里直接调用） */
+export async function shareBackupFile(db: StudyDB, file: File): Promise<ShareOutcome> {
   const nav = navigator as ShareNavigator;
+  if (typeof nav.share !== 'function') return { kind: 'failed', message: '浏览器没有分享功能' };
   try {
-    await nav.share!({ files: [file], title: '复习本备份' });
+    await nav.share({ files: [file], title: '复习本备份' });
     await markBackedUp(db);
     return { kind: 'shared' };
   } catch (e) {
-    const name = (e as { name?: string })?.name;
-    if (name === 'AbortError') return { kind: 'cancelled' };
-    if (name === 'NotAllowedError') return { kind: 'needsTap', file };
-    throw e;
+    const err = e as { name?: string; message?: string };
+    if (err?.name === 'AbortError') return { kind: 'cancelled' };
+    return { kind: 'failed', message: `${err?.name ?? 'Error'}: ${err?.message ?? String(e)}` };
   }
 }
 
-/**
- * 生成备份并分享。优先分享 ZIP（体积小）；浏览器不允许分享 ZIP 时改用 .txt 文本备份；
- * 都不能分享时下载 ZIP。
- */
-export async function backupAndShare(db: StudyDB, onProgress: Progress = () => {}): Promise<ShareOutcome> {
-  const probeZip = new File([new Uint8Array(1)], 'probe.zip', { type: 'application/zip' });
-  const probeTxt = new File(['x'], 'probe.txt', { type: 'text/plain' });
-
-  let file: File | null = null;
-  if (canShareFile(probeZip)) {
-    const blob = await exportBackup(db, onProgress);
-    file = new File([blob], backupFileName(), { type: 'application/zip' });
-  } else if (canShareFile(probeTxt)) {
-    const blob = await exportTextBackup(db, onProgress);
-    file = new File([blob], textBackupFileName(), { type: 'text/plain' });
-  }
-
-  if (file && canShareFile(file)) return shareFile(db, file);
-
-  const blob = file ?? (await exportBackup(db, onProgress));
-  const filename = file ? file.name : backupFileName();
-  downloadBlob(blob, filename);
+/** 下载到手机 */
+export async function saveBackupFile(db: StudyDB, file: File): Promise<void> {
+  downloadBlob(file, file.name);
   await markBackedUp(db);
-  return { kind: 'downloaded', filename };
 }
 
 export interface BackupReminderState {

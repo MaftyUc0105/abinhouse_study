@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BackupShareButton } from '../components/BackupShare';
+import { BackupPanel } from '../components/BackupShare';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SyncSettings } from '../components/SyncSettings';
 import { useToast } from '../components/Toast';
@@ -82,10 +82,10 @@ function BackupSection() {
     <>
       <div className="section-title">备份</div>
       <div className="card stack">
-        <BackupShareButton />
+        <BackupPanel />
         <div className="hint">
           上次备份：{lastBackup ? new Date(lastBackup).toLocaleString('zh-CN', { hour12: false }) : '从未'}。
-          点按钮后在分享菜单里选微信 →"文件传输助手"。超过 7 天没备份，首页会提醒。
+          先点"准备备份文件"，再点"分享到微信 / 网盘"，在分享菜单里选微信 →"文件传输助手"。超过 7 天没备份，首页会提醒。
         </div>
         <button className="btn" disabled={!!busy} onClick={doExport}>
           导出 ZIP 到下载

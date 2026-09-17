@@ -25,6 +25,7 @@ await ctx.addInitScript(() => {
   Object.defineProperty(navigator, 'share', {
     configurable: true,
     value: async (data) => {
+      if (window.__rejectShare) throw new DOMException('Must be handling a user gesture to perform a share request.', 'NotAllowedError');
       for (const f of data.files ?? []) window.__shared.push(f);
     },
   });
@@ -348,8 +349,23 @@ await page.click('a[href="#/"]');
 await page.waitForSelector('.backup-reminder');
 check('10 天没备份时首页出现提醒', (await page.locator('.backup-reminder b').textContent()) === '还没有备份过');
 await page.screenshot({ path: path.join(OUT, 'backup-reminder.png'), fullPage: true });
-await page.click('.backup-reminder button:has-text("现在备份")');
-await page.waitForSelector('.toast:has-text("已备份")');
+check('检测信息显示支持 txt 分享', /文件分享支持 txt/.test((await page.locator('.backup-reminder .tiny').last().textContent()) ?? ''), await page.locator('.backup-reminder .tiny').last().textContent());
+
+// 先模拟浏览器拒绝分享：页面上应显示原因，不能什么都不出现
+await page.evaluate(() => {
+  window.__rejectShare = true;
+});
+await page.click('.backup-reminder button:has-text("准备备份文件")');
+await page.waitForSelector('.backup-reminder button:has-text("分享到微信 / 网盘")');
+check('准备好后显示文件名和大小', /abinhouse_backup_.*\.txt/.test((await page.locator('.backup-reminder .backup-panel .small').first().textContent()) ?? ''));
+await page.screenshot({ path: path.join(OUT, 'backup-ready.png'), fullPage: true });
+await page.click('.backup-reminder button:has-text("分享到微信 / 网盘")');
+await page.waitForSelector('.backup-reminder .error');
+check('分享被拒时页面显示原因', /NotAllowedError/.test((await page.locator('.backup-reminder .error').textContent()) ?? ''), await page.locator('.backup-reminder .error').textContent());
+await page.evaluate(() => {
+  window.__rejectShare = false;
+});
+await page.click('.backup-reminder button:has-text("分享到微信 / 网盘")');
 await page.waitForSelector('.backup-reminder', { state: 'detached' });
 const shared = await page.evaluate(async () => {
   const f = window.__shared[window.__shared.length - 1];
