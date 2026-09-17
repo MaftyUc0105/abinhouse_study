@@ -39,7 +39,7 @@ describe('repo', () => {
 
   it('applyReview 更新状态并写日志', async () => {
     const id = await repo.createNote({ title: 't', subject: 's', body: '', tags: [] }, [], T);
-    const next = await repo.applyReview('note', id, 2, '2026-09-18');
+    const { next } = await repo.applyReview('note', id, 2, '2026-09-18');
     expect(next.stage).toBe(1);
     expect(next.dueDate).toBe('2026-09-20');
     const logs = await db.reviewLogs.where('[itemType+itemId]').equals(['note', id]).toArray();
@@ -71,5 +71,42 @@ describe('repo', () => {
     const s = await repo.updateSettings({ ladder: [1, 3, 9], dailyNewCap: 5 });
     expect(s.ladder).toEqual([1, 3, 9]);
     expect((await repo.getSettings()).dailyNewCap).toBe(5);
+  });
+
+  it('undoReview 恢复调度并删除日志', async () => {
+    const id = await repo.createNote({ title: 't', subject: 's', body: '', tags: [] }, [], T);
+    const before = (await db.notes.get(id))!;
+    const r = await repo.applyReview('note', id, 3, '2026-09-18');
+    await repo.undoReview('note', id, r.prev, r.logId);
+    const after = (await db.notes.get(id))!;
+    expect(after.stage).toBe(before.stage);
+    expect(after.dueDate).toBe(before.dueDate);
+    expect(after.reviewCount).toBe(0);
+    expect(after.recentRatings).toEqual([]);
+    expect(await db.reviewLogs.count()).toBe(0);
+  });
+
+  it('删除写墓碑（含级联的卡片与图片）', async () => {
+    const id = await repo.createNote({ title: 't', subject: 's', body: '', tags: [] }, [img('n1')], T);
+    const [cid] = await repo.createCards(id, [{ question: 'q', answer: '', answerImages: [img('c1')] }], T);
+    await repo.deleteNote(id);
+    const keys = (await db.tombstones.toArray()).map((t) => t.key).sort();
+    expect(keys).toEqual([`card:${cid}`, 'image:c1', 'image:n1', `note:${id}`].sort());
+  });
+
+  it('更新遮挡写入 masks 与 updatedAt；图片被移除写墓碑', async () => {
+    const id = await repo.createNote({ title: 't', subject: 's', body: '', tags: [] }, [img('a'), img('b')], T);
+    const mask = { id: 'm1', x: 0.1, y: 0.1, w: 0.2, h: 0.1 };
+    await repo.updateNote(id, { title: 't', subject: 's', body: '', tags: [] }, [{ ...img('a'), masks: [mask] }]);
+    const a = (await db.images.get('a'))!;
+    expect(a.masks).toEqual([mask]);
+    expect(a.updatedAt).toBeGreaterThanOrEqual(a.createdAt);
+    expect(await db.images.get('b')).toBeUndefined();
+    expect(await db.tombstones.get('image:b')).toBeTruthy();
+  });
+
+  it('写操作标记待同步', async () => {
+    await repo.createNote({ title: 't', subject: 's', body: '', tags: [] }, [], T);
+    expect((await db.meta.get('syncDirty'))?.value).toBe(true);
   });
 });

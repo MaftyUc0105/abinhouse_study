@@ -43,6 +43,15 @@ export interface Card extends Scheduling {
   updatedAt: number;
 }
 
+/** 照片遮挡块，坐标为相对图片的 0–1 比例 */
+export interface Mask {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface ImageRecord {
   id: string;
   ownerType: ItemType;
@@ -55,6 +64,9 @@ export interface ImageRecord {
   height: number;
   size: number;
   createdAt: number;
+  /** 遮挡或顺序修改时间；旧数据可能没有，按 createdAt 处理 */
+  updatedAt?: number;
+  masks?: Mask[];
 }
 
 export interface ReviewLog {
@@ -91,6 +103,25 @@ export interface Settings {
   forgotSameDay: boolean;
   /** 间隔上限（天） */
   maxInterval: number;
+  /** 到期日小幅错开，避免同一天堆积 */
+  fuzz: boolean;
+  /** 考研日期；设置后复习间隔不会越过考试日 */
+  examDate: LocalDate | null;
+  /** 最后修改时间，多设备同步时新者为准 */
+  updatedAt: number;
+}
+
+/** 删除记录，用于多设备同步时阻止已删条目复活 */
+export interface Tombstone {
+  /** 'note:<id>' | 'card:<id>' | 'image:<id>' */
+  key: string;
+  deletedAt: number;
+}
+
+/** 仅本机的键值数据（同步配置、状态），不参与同步和备份 */
+export interface MetaRecord {
+  key: string;
+  value: unknown;
 }
 
 export const RATING_LABEL: Record<Rating, string> = {

@@ -1,12 +1,13 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/schema';
 import { useTodayQueue } from '../hooks/useTodayQueue';
-import { addDays, today } from '../scheduler/dates';
+import { addDays } from '../scheduler/dates';
+import { useToday } from '../hooks/useToday';
 import { dailyCounts, streak, subjectStats, upcomingLoad } from '../utils/stats';
 import { formatBytes } from '../utils/image';
 
 export function StatsPage() {
-  const t = today();
+  const t = useToday();
   const q = useTodayQueue();
   const data = useLiveQuery(async () => {
     const [notes, cards, logs, imageCount, imageSize] = await Promise.all([

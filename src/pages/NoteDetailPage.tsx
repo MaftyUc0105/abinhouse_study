@@ -11,7 +11,8 @@ import { db } from '../db/schema';
 import { RATING_LABEL, type Card, type ItemType, type ReviewLog } from '../db/types';
 import { useImages } from '../hooks/useImages';
 import { useSettings } from '../hooks/useSettings';
-import { describeDue, today } from '../scheduler/dates';
+import { describeDue } from '../scheduler/dates';
+import { useToday } from '../hooks/useToday';
 
 type Confirm =
   | { kind: 'deleteNote' }
@@ -24,7 +25,7 @@ export function NoteDetailPage() {
   const nav = useNavigate();
   const toast = useToast();
   const settings = useSettings();
-  const t = today();
+  const t = useToday();
   const note = useLiveQuery(() => db.notes.get(id), [id]);
   const cards = useLiveQuery(() => db.cards.where('noteId').equals(id).sortBy('order'), [id]) ?? [];
   const images = useImages('note', id, 'body');
@@ -37,6 +38,8 @@ export function NoteDetailPage() {
     }, [id]) ?? [];
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [showLogs, setShowLogs] = useState(false);
+  const [selfTest, setSelfTest] = useState(false);
+  const maskCount = images.reduce((n, i) => n + (i.masks?.length ?? 0), 0);
 
   if (note === undefined) return <div className="page empty">加载中…</div>;
   if (!note) return <div className="page empty">笔记不存在</div>;
@@ -121,10 +124,17 @@ export function NoteDetailPage() {
         </div>
       </div>
 
-      <div className="section-title">内容</div>
+      <div className="section-title row-between">
+        <span>内容</span>
+        {maskCount > 0 && (
+          <button className={`chip chip-btn${selfTest ? ' chip-active' : ''}`} onClick={() => setSelfTest((v) => !v)}>
+            {selfTest ? '退出自测' : `遮挡自测（${maskCount} 块）`}
+          </button>
+        )}
+      </div>
       <div className="card stack">
         {note.body ? <MarkdownView markdown={note.body} /> : images.length === 0 && <span className="muted">（无文字内容）</span>}
-        <ImageGrid images={images} />
+        <ImageGrid key={selfTest ? 'test' : 'view'} images={images} maskMode={selfTest ? 'test' : 'outline'} />
       </div>
 
       <div className="section-title">
@@ -217,10 +227,10 @@ function CardRow({
       </div>
       {open && (
         <div className="stack mt-8">
-          {qImages.length > 0 && <ImageGrid images={qImages} mode="grid" />}
+          {qImages.length > 0 && <ImageGrid images={qImages} mode="grid" maskMode="outline" />}
           <div className="small muted">答案：</div>
           {card.answer ? <MarkdownView markdown={card.answer} className="small" /> : aImages.length === 0 && <span className="tiny">（空）</span>}
-          <ImageGrid images={aImages} mode="grid" />
+          <ImageGrid images={aImages} mode="grid" maskMode="outline" />
           <div className="row">
             <Link className="btn btn-sm" to={`/edit/card/${card.id}`}>
               编辑

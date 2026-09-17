@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo } from 'react';
 import { db } from '../db/schema';
-import { today } from '../scheduler/dates';
+import { useToday } from './useToday';
 import { buildQueue, isNew, type QueueItem } from '../scheduler/queue';
 import { useSettings } from './useSettings';
 
@@ -16,7 +16,7 @@ export interface TodayQueue {
 
 export function useTodayQueue(): TodayQueue {
   const settings = useSettings();
-  const t = today();
+  const t = useToday();
   const data = useLiveQuery(async () => {
     const notes = await db.notes.where('dueDate').belowOrEqual(t).toArray();
     const cards = await db.cards.where('dueDate').belowOrEqual(t).toArray();

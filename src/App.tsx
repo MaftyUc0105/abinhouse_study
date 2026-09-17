@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { HashRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { BottomTabs } from './components/BottomTabs';
 import { ToastProvider } from './components/Toast';
@@ -9,6 +10,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { SplitCardsPage } from './pages/SplitCardsPage';
 import { StatsPage } from './pages/StatsPage';
 import { TodayPage } from './pages/TodayPage';
+import { db } from './db/schema';
+import { startAutoSync } from './sync/runner';
 
 function Layout() {
   const loc = useLocation();
@@ -33,6 +36,7 @@ function Layout() {
 }
 
 export default function App() {
+  useEffect(() => startAutoSync(db), []);
   return (
     <HashRouter>
       <ToastProvider>

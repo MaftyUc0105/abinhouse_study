@@ -1,24 +1,17 @@
 import JSZip from 'jszip';
-import { isValidLocalDate } from '../scheduler/dates';
+import { markDirty } from '../sync/changes';
+import { buildSnapshot, mergeSnapshot, validateSnapshot, type ImageMeta, type Snapshot } from './merge';
 import type { StudyDB } from './schema';
-import { DEFAULT_SETTINGS, validateSettings } from './seedSettings';
-import type { Card, ImageRecord, Note, ReviewLog, Settings, Subject } from './types';
+import type { ImageRecord, ReviewLog } from './types';
 
 export const BACKUP_APP = 'abinhouse_study';
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
+const SUPPORTED_VERSIONS = [1, 2];
 
-type ImageMeta = Omit<ImageRecord, 'blob'>;
-
-export interface BackupJson {
+export interface BackupJson extends Snapshot {
   app: typeof BACKUP_APP;
   version: number;
   exportedAt: number;
-  notes: Note[];
-  cards: Card[];
-  images: ImageMeta[];
-  reviewLogs: ReviewLog[];
-  subjects: Subject[];
-  settings: Settings;
 }
 
 export type ImportMode = 'merge' | 'replace';
@@ -37,8 +30,8 @@ export interface ImportResult {
 
 export type Progress = (msg: string, ratio?: number) => void;
 
-/** 兼容没有 Blob.arrayBuffer 的环境（旧浏览器 / jsdom） */
-function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
+/** 兼容没有 Blob.arrayBuffer 的环境 */
+export function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
   if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer();
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -50,40 +43,17 @@ function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
 
 export async function exportBackup(db: StudyDB, onProgress: Progress = () => {}): Promise<Blob> {
   onProgress('读取数据…', 0);
-  const [notes, cards, images, reviewLogs, subjects, settings] = await db.transaction(
-    'r',
-    [db.notes, db.cards, db.images, db.reviewLogs, db.subjects, db.settings],
-    () =>
-      Promise.all([
-        db.notes.toArray(),
-        db.cards.toArray(),
-        db.images.toArray(),
-        db.reviewLogs.toArray(),
-        db.subjects.toArray(),
-        db.settings.get('default'),
-      ]),
-  );
+  const { snapshot, blobs } = await buildSnapshot(db);
 
   const zip = new JSZip();
-  const meta: ImageMeta[] = [];
-  for (let i = 0; i < images.length; i++) {
-    const { blob, ...rest } = images[i];
-    meta.push(rest);
-    zip.file(`images/${rest.id}.jpg`, await blobToArrayBuffer(blob), { compression: 'STORE' });
-    if (i % 10 === 0) onProgress(`打包图片 ${i + 1}/${images.length}`, (i / Math.max(1, images.length)) * 0.5);
+  let i = 0;
+  for (const [id, blob] of blobs) {
+    zip.file(`images/${id}.jpg`, await blobToArrayBuffer(blob), { compression: 'STORE' });
+    if (i % 10 === 0) onProgress(`打包图片 ${i + 1}/${blobs.size}`, (i / Math.max(1, blobs.size)) * 0.5);
+    i++;
   }
 
-  const json: BackupJson = {
-    app: BACKUP_APP,
-    version: BACKUP_VERSION,
-    exportedAt: Date.now(),
-    notes,
-    cards,
-    images: meta,
-    reviewLogs,
-    subjects,
-    settings: settings ?? DEFAULT_SETTINGS,
-  };
+  const json: BackupJson = { app: BACKUP_APP, version: BACKUP_VERSION, exportedAt: Date.now(), ...snapshot };
   zip.file('backup.json', JSON.stringify(json), { compression: 'DEFLATE' });
 
   onProgress('生成压缩包…', 0.6);
@@ -97,109 +67,9 @@ export function backupFileName(date = new Date()): string {
   return `abinhouse_backup_${y}-${m}-${d}.zip`;
 }
 
-// ---------- 校验 ----------
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
-}
-function isStr(v: unknown): v is string {
-  return typeof v === 'string';
-}
-function isNum(v: unknown): v is number {
-  return typeof v === 'number' && Number.isFinite(v);
-}
-function isNonNegInt(v: unknown): v is number {
-  return Number.isInteger(v) && (v as number) >= 0;
-}
-function isRatingArr(v: unknown): boolean {
-  return Array.isArray(v) && v.every((r) => r === 0 || r === 1 || r === 2 || r === 3);
-}
-
-function validScheduling(v: Record<string, unknown>): boolean {
-  return (
-    isNonNegInt(v.stage) &&
-    isValidLocalDate(v.dueDate) &&
-    (v.lastReviewedAt === null || isNum(v.lastReviewedAt)) &&
-    isNum(v.lastInterval) &&
-    isNonNegInt(v.reviewCount) &&
-    isNonNegInt(v.lapseCount) &&
-    isRatingArr(v.recentRatings) &&
-    typeof v.suspended === 'boolean'
-  );
-}
-
-function validNote(v: unknown): v is Note {
-  return (
-    isRecord(v) &&
-    isStr(v.id) &&
-    v.id.length > 0 &&
-    isStr(v.title) &&
-    isStr(v.subject) &&
-    isStr(v.body) &&
-    Array.isArray(v.tags) &&
-    v.tags.every(isStr) &&
-    isNum(v.createdAt) &&
-    isNum(v.updatedAt) &&
-    validScheduling(v)
-  );
-}
-
-function validCard(v: unknown, noteIds: Set<string>): v is Card {
-  return (
-    isRecord(v) &&
-    isStr(v.id) &&
-    v.id.length > 0 &&
-    isStr(v.noteId) &&
-    noteIds.has(v.noteId) &&
-    isStr(v.question) &&
-    isStr(v.answer) &&
-    isNum(v.order) &&
-    isNum(v.createdAt) &&
-    isNum(v.updatedAt) &&
-    validScheduling(v)
-  );
-}
-
-function validImageMeta(v: unknown, ownerIds: Set<string>): v is ImageMeta {
-  return (
-    isRecord(v) &&
-    isStr(v.id) &&
-    v.id.length > 0 &&
-    (v.ownerType === 'note' || v.ownerType === 'card') &&
-    isStr(v.ownerId) &&
-    ownerIds.has(v.ownerId) &&
-    (v.slot === 'body' || v.slot === 'question' || v.slot === 'answer') &&
-    isNum(v.order) &&
-    isNum(v.width) &&
-    isNum(v.height) &&
-    isNum(v.createdAt)
-  );
-}
-
-function validLog(v: unknown, ids: Set<string>): v is ReviewLog {
-  return (
-    isRecord(v) &&
-    (v.itemType === 'note' || v.itemType === 'card') &&
-    isStr(v.itemId) &&
-    ids.has(v.itemId) &&
-    (v.rating === 0 || v.rating === 1 || v.rating === 2 || v.rating === 3) &&
-    isNum(v.reviewedAt) &&
-    isValidLocalDate(v.date) &&
-    isNonNegInt(v.stageBefore) &&
-    isNonNegInt(v.stageAfter) &&
-    isNum(v.intervalDays) &&
-    isValidLocalDate(v.dueBefore)
-  );
-}
-
 export interface ParsedBackup {
-  json: BackupJson;
-  notes: Note[];
-  cards: Card[];
+  snapshot: Snapshot;
   images: ImageRecord[];
-  reviewLogs: ReviewLog[];
-  subjects: Subject[];
-  settings: Settings;
   missingImages: number;
   skipped: number;
 }
@@ -220,41 +90,30 @@ export async function parseBackup(file: Blob, onProgress: Progress = () => {}): 
   } catch {
     throw new Error('backup.json 不是合法 JSON');
   }
-  if (!isRecord(json) || json.app !== BACKUP_APP) throw new Error('不是本应用的备份文件');
-  if (json.version !== BACKUP_VERSION) throw new Error(`备份版本 ${String(json.version)} 不受支持`);
-  for (const k of ['notes', 'cards', 'images', 'reviewLogs', 'subjects']) {
-    if (!Array.isArray(json[k])) throw new Error(`备份缺少 ${k}`);
-  }
+  if (typeof json !== 'object' || json === null || (json as { app?: unknown }).app !== BACKUP_APP)
+    throw new Error('不是本应用的备份文件');
+  const version = (json as { version?: unknown }).version;
+  if (!SUPPORTED_VERSIONS.includes(version as number)) throw new Error(`备份版本 ${String(version)} 不受支持`);
 
-  let skipped = 0;
-  const notes = (json.notes as unknown[]).filter((n) => validNote(n) || (skipped++, false)) as Note[];
-  const noteIds = new Set(notes.map((n) => n.id));
-  const cards = (json.cards as unknown[]).filter((c) => validCard(c, noteIds) || (skipped++, false)) as Card[];
-  const ownerIds = new Set([...noteIds, ...cards.map((c) => c.id)]);
-  const metas = (json.images as unknown[]).filter((i) => validImageMeta(i, ownerIds) || (skipped++, false)) as ImageMeta[];
-  const reviewLogs = (json.reviewLogs as unknown[]).filter((l) => validLog(l, ownerIds) || (skipped++, false)) as ReviewLog[];
-  const subjects = (json.subjects as unknown[]).filter(
-    (s): s is Subject => isRecord(s) && isStr(s.name) && s.name.length > 0 && isNum(s.createdAt),
-  );
-  const rawSettings = isRecord(json.settings) ? (json.settings as Partial<Settings>) : {};
-  const settings: Settings = validateSettings(rawSettings) ? DEFAULT_SETTINGS : { ...DEFAULT_SETTINGS, ...rawSettings, id: 'default' };
+  const { snapshot, skipped } = validateSnapshot(json as Record<string, unknown>);
 
   const images: ImageRecord[] = [];
   let missingImages = 0;
-  for (let i = 0; i < metas.length; i++) {
-    const m = metas[i];
+  const kept: ImageMeta[] = [];
+  for (let i = 0; i < snapshot.images.length; i++) {
+    const m = snapshot.images[i];
     const f = zip.file(`images/${m.id}.jpg`);
     if (!f) {
       missingImages += 1;
       continue;
     }
-    const buf = await f.async('arraybuffer');
-    const blob = new Blob([buf], { type: 'image/jpeg' });
+    const blob = new Blob([await f.async('arraybuffer')], { type: 'image/jpeg' });
     images.push({ ...m, blob, size: blob.size });
-    if (i % 10 === 0) onProgress(`读取图片 ${i + 1}/${metas.length}`, (i / Math.max(1, metas.length)) * 0.8);
+    kept.push(m);
+    if (i % 10 === 0) onProgress(`读取图片 ${i + 1}/${snapshot.images.length}`, (i / Math.max(1, snapshot.images.length)) * 0.8);
   }
 
-  return { json: json as unknown as BackupJson, notes, cards, images, reviewLogs, subjects, settings, missingImages, skipped };
+  return { snapshot: { ...snapshot, images: kept }, images, missingImages, skipped };
 }
 
 export async function importBackup(
@@ -264,82 +123,37 @@ export async function importBackup(
   onProgress: Progress = () => {},
 ): Promise<ImportResult> {
   const p = await parseBackup(file, onProgress);
+  const s = p.snapshot;
   onProgress('写入数据库…', 0.85);
 
-  const tables = [db.notes, db.cards, db.images, db.reviewLogs, db.subjects, db.settings];
-  const result: ImportResult = {
-    notes: 0,
-    cards: 0,
-    images: 0,
-    reviewLogs: 0,
-    subjects: 0,
-    missingImages: p.missingImages,
-    skipped: p.skipped,
-  };
-
-  await db.transaction('rw', tables, async () => {
-    if (mode === 'replace') {
-      for (const t of tables) await t.clear();
-      await db.notes.bulkPut(p.notes);
-      await db.cards.bulkPut(p.cards);
+  let result: ImportResult;
+  if (mode === 'replace') {
+    await db.transaction('rw', db.dataTables, async () => {
+      for (const t of db.dataTables) await t.clear();
+      await db.notes.bulkPut(s.notes);
+      await db.cards.bulkPut(s.cards);
       await db.images.bulkPut(p.images);
-      await db.reviewLogs.bulkAdd(p.reviewLogs.map(({ id: _id, ...l }) => l));
-      await db.subjects.bulkPut(p.subjects);
-      await db.settings.put(p.settings);
-      result.notes = p.notes.length;
-      result.cards = p.cards.length;
-      result.images = p.images.length;
-      result.reviewLogs = p.reviewLogs.length;
-      result.subjects = p.subjects.length;
-      return;
-    }
+      await db.reviewLogs.bulkAdd(s.reviewLogs as ReviewLog[]);
+      await db.subjects.bulkPut(s.subjects);
+      await db.tombstones.bulkPut(s.tombstones);
+      if (s.settings) await db.settings.put(s.settings);
+    });
+    result = {
+      notes: s.notes.length,
+      cards: s.cards.length,
+      images: p.images.length,
+      reviewLogs: s.reviewLogs.length,
+      subjects: s.subjects.length,
+      missingImages: p.missingImages,
+      skipped: p.skipped,
+    };
+  } else {
+    const blobs = new Map(p.images.map((i) => [i.id, i.blob]));
+    const r = await mergeSnapshot(db, s, async (m) => blobs.get(m.id) ?? null, { mergeSettings: false });
+    result = { ...r, missingImages: p.missingImages + r.missingImages, skipped: p.skipped };
+  }
 
-    // merge：同 id 取 updatedAt 大者
-    const newerNotes: Note[] = [];
-    for (const n of p.notes) {
-      const cur = await db.notes.get(n.id);
-      if (!cur || n.updatedAt > cur.updatedAt) newerNotes.push(n);
-    }
-    await db.notes.bulkPut(newerNotes);
-    result.notes = newerNotes.length;
-
-    const newerCards: Card[] = [];
-    for (const c of p.cards) {
-      const cur = await db.cards.get(c.id);
-      if (!cur || c.updatedAt > cur.updatedAt) newerCards.push(c);
-    }
-    await db.cards.bulkPut(newerCards);
-    result.cards = newerCards.length;
-
-    const newImages: ImageRecord[] = [];
-    for (const img of p.images) {
-      if (!(await db.images.get(img.id))) newImages.push(img);
-    }
-    await db.images.bulkPut(newImages);
-    result.images = newImages.length;
-
-    const existingLogs = await db.reviewLogs.toArray();
-    const seen = new Set(existingLogs.map((l) => `${l.itemType}|${l.itemId}|${l.reviewedAt}`));
-    const newLogs: ReviewLog[] = [];
-    for (const { id: _id, ...l } of p.reviewLogs) {
-      const key = `${l.itemType}|${l.itemId}|${l.reviewedAt}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        newLogs.push(l);
-      }
-    }
-    await db.reviewLogs.bulkAdd(newLogs);
-    result.reviewLogs = newLogs.length;
-
-    const newSubjects: Subject[] = [];
-    for (const s of p.subjects) {
-      if (!(await db.subjects.get(s.name))) newSubjects.push(s);
-    }
-    await db.subjects.bulkPut(newSubjects);
-    result.subjects = newSubjects.length;
-    // merge 模式不覆盖本机设置
-  });
-
+  await markDirty(db);
   onProgress('完成', 1);
   return result;
 }

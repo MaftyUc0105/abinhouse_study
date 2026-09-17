@@ -5,14 +5,15 @@ import { IntensityBadge, StageDots, SubjectChip } from '../components/Badges';
 import { db } from '../db/schema';
 import type { Note } from '../db/types';
 import { useSettings } from '../hooks/useSettings';
-import { describeDue, today } from '../scheduler/dates';
+import { describeDue } from '../scheduler/dates';
+import { useToday } from '../hooks/useToday';
 import { plainPreview } from '../utils/markdown';
 
 type Sort = 'due' | 'updated' | 'created';
 
 export function LibraryPage() {
   const settings = useSettings();
-  const t = today();
+  const t = useToday();
   const [search, setSearch] = useState('');
   const [subject, setSubject] = useState<string>('');
   const [sort, setSort] = useState<Sort>('due');

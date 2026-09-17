@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SyncSettings } from '../components/SyncSettings';
 import { useToast } from '../components/Toast';
 import { backupFileName, downloadBlob, exportBackup, importBackup, type ImportMode, type ImportResult } from '../db/backup';
 import { repo } from '../db/repo';
@@ -17,9 +18,10 @@ export function SettingsPage() {
       <div className="page-header">
         <h1>设置</h1>
       </div>
+      <SyncSettings />
       <BackupSection />
       <StorageSection />
-      <ScheduleSection key={JSON.stringify(s)} />
+      <ScheduleSection key={s.updatedAt} />
       <div className="section-title">提醒</div>
       <div className="card small muted">
         网页应用无法在后台定时弹通知。建议在手机闹钟里设一个固定时间（比如每晚 8 点）打开本应用；已安装到桌面时，图标角标会显示待复习数。
@@ -27,7 +29,7 @@ export function SettingsPage() {
       <DangerSection onCleared={() => toast('已清空全部数据')} />
       <div className="section-title">关于</div>
       <div className="card small muted">
-        艾宾浩斯复习本 v{__APP_VERSION__} · 数据只保存在本机浏览器里，请定期导出备份。
+        艾宾浩斯复习本 v{__APP_VERSION__} · 数据保存在本机浏览器里；开启云端同步后会自动上传到你的 GitHub 私有仓库。
       </div>
     </div>
   );
@@ -171,6 +173,8 @@ function ScheduleSection() {
   const [cap, setCap] = useState(String(s.dailyNewCap));
   const [maxI, setMaxI] = useState(String(s.maxInterval));
   const [forgotSameDay, setForgot] = useState(s.forgotSameDay);
+  const [fuzz, setFuzz] = useState(s.fuzz);
+  const [examDate, setExamDate] = useState(s.examDate ?? '');
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
@@ -184,6 +188,8 @@ function ScheduleSection() {
       dailyNewCap: Number(cap),
       maxInterval: Number(maxI),
       forgotSameDay,
+      fuzz,
+      examDate: examDate || null,
     };
     const e = validateSettings(patch);
     if (e) return setErr(e);
@@ -200,6 +206,18 @@ function ScheduleSection() {
     <>
       <div className="section-title">复习参数</div>
       <div className="card">
+        <div className="field mb-8">
+          <label>考研日期</label>
+          <div className="row" style={{ flexWrap: 'nowrap' }}>
+            <input className="input" type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} />
+            {examDate && (
+              <button className="btn btn-sm" onClick={() => setExamDate('')}>
+                清除
+              </button>
+            )}
+          </div>
+          <div className="hint">设置后首页显示倒计时。离考 N 天时，复习间隔最长为 N/2 天，保证每条内容考前还能再复习，且越临考越密。</div>
+        </div>
         <div className="field">
           <label>艾宾浩斯阶梯（天，逗号分隔，递增）</label>
           <input className="input" value={ladder} onChange={(e) => setLadder(e.target.value)} />
@@ -219,6 +237,10 @@ function ScheduleSection() {
         <div className="setting-row">
           <span className="small">间隔上限（天）</span>
           <input className="input" inputMode="numeric" value={maxI} onChange={(e) => setMaxI(e.target.value)} />
+        </div>
+        <div className="setting-row">
+          <span className="small">到期日小幅错开（避免同一天堆积）</span>
+          <input type="checkbox" className="switch" checked={fuzz} onChange={(e) => setFuzz(e.target.checked)} />
         </div>
         <div className="setting-row">
           <span className="small">评"忘了"后当次会话再看一遍</span>

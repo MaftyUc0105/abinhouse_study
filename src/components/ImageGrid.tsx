@@ -1,45 +1,81 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useObjectUrls } from '../hooks/useObjectUrls';
-import { Lightbox } from './Lightbox';
+import { Lightbox, type LightboxImage } from './Lightbox';
+import { OccludedImage, type MaskMode } from './OccludedImage';
 
 interface Props {
-  images: { id: string; blob: Blob; width?: number; height?: number }[];
-  /** grid：缩略图网格；list：逐张全宽显示 */
+  images: LightboxImage[];
+  /** grid：缩略图网格；list：逐张全宽显示。带遮挡的图片始终按 list 显示 */
   mode?: 'grid' | 'list';
+  /** test：遮挡自测；outline：只画描边 */
+  maskMode?: MaskMode;
+  /** 揭开全部遮挡 */
+  allRevealed?: boolean;
 }
 
-/** 只读图片展示，点击进入灯箱 */
-export function ImageGrid({ images, mode = 'list' }: Props) {
+/** 只读图片展示，点击进入灯箱；支持遮挡自测（逐块点开） */
+export function ImageGrid({ images, mode = 'list', maskMode = 'none', allRevealed }: Props) {
   const urls = useObjectUrls(images);
   const [open, setOpen] = useState<number | null>(null);
+  const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
+  const toggle = useCallback(
+    (id: string) =>
+      setRevealed((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    [],
+  );
   if (images.length === 0) return null;
+
+  const hasMasks = maskMode !== 'none' && images.some((i) => (i.masks?.length ?? 0) > 0);
+  const effective = hasMasks ? 'list' : mode;
 
   return (
     <>
-      {mode === 'grid' ? (
+      {effective === 'grid' ? (
         <div className="thumb-grid">
           {images.map((img, i) => (
             <div key={img.id} className="thumb" onClick={() => setOpen(i)}>
-              <img src={urls[img.id]} alt="" loading="lazy" />
+              {urls[img.id] && <img src={urls[img.id]} alt="" loading="lazy" />}
             </div>
           ))}
         </div>
       ) : (
         <div className="photo-list">
           {images.map((img, i) => (
-            <img
+            <OccludedImage
               key={img.id}
               src={urls[img.id]}
-              alt=""
-              width={img.width}
-              height={img.height}
-              loading="lazy"
-              onClick={() => setOpen(i)}
+              width={img.width ?? 4}
+              height={img.height ?? 3}
+              masks={img.masks}
+              mode={maskMode}
+              revealed={revealed}
+              allRevealed={allRevealed}
+              onToggle={toggle}
+              onImageClick={() => setOpen(i)}
+              className="photo"
             />
           ))}
         </div>
       )}
-      {open != null && <Lightbox images={images} index={open} onClose={() => setOpen(null)} />}
+      {hasMasks && maskMode === 'test' && !allRevealed && (
+        <div className="tiny">点遮挡块可逐个揭开，点图片其他位置放大</div>
+      )}
+      {open != null && (
+        <Lightbox
+          images={images}
+          index={open}
+          onClose={() => setOpen(null)}
+          maskMode={maskMode}
+          revealed={revealed}
+          allRevealed={allRevealed}
+          onToggle={toggle}
+        />
+      )}
     </>
   );
 }

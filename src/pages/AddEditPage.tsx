@@ -9,7 +9,7 @@ import { db } from '../db/schema';
 import type { ImageRecord } from '../db/types';
 
 function toInputs(recs: ImageRecord[]): ImageInput[] {
-  return recs.map((r) => ({ id: r.id, blob: r.blob, width: r.width, height: r.height }));
+  return recs.map((r) => ({ id: r.id, blob: r.blob, width: r.width, height: r.height, masks: r.masks ?? [] }));
 }
 
 export function AddEditPage() {

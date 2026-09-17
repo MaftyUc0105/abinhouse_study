@@ -1,4 +1,5 @@
 import type { StudyDB } from './schema';
+import { isValidLocalDate } from '../scheduler/dates';
 import type { Settings } from './types';
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -9,6 +10,9 @@ export const DEFAULT_SETTINGS: Settings = {
   dailyNewCap: 0,
   forgotSameDay: true,
   maxInterval: 180,
+  fuzz: true,
+  examDate: null,
+  updatedAt: 0,
 };
 
 /** 校验并规范化用户输入的设置；返回错误信息或 null */
@@ -29,6 +33,7 @@ export function validateSettings(s: Partial<Settings>): string | null {
     return '每日新条目上限必须是非负整数';
   if (s.maxInterval !== undefined && !(Number.isInteger(s.maxInterval) && s.maxInterval >= 1))
     return '间隔上限必须是正整数';
+  if (s.examDate !== undefined && s.examDate !== null && !isValidLocalDate(s.examDate)) return '考试日期格式不正确';
   return null;
 }
 

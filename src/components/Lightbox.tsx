@@ -1,13 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Mask } from '../db/types';
 import { useObjectUrls } from '../hooks/useObjectUrls';
+import { OccludedImage, type MaskMode } from './OccludedImage';
 
-interface Props {
-  images: { id: string; blob: Blob }[];
-  index: number;
-  onClose: () => void;
+export interface LightboxImage {
+  id: string;
+  blob: Blob;
+  width?: number;
+  height?: number;
+  masks?: Mask[];
 }
 
-export function Lightbox({ images, index, onClose }: Props) {
+interface Props {
+  images: LightboxImage[];
+  index: number;
+  onClose: () => void;
+  maskMode?: MaskMode;
+  revealed?: Set<string>;
+  allRevealed?: boolean;
+  onToggle?: (maskId: string) => void;
+}
+
+export function Lightbox({ images, index, onClose, maskMode = 'none', revealed, allRevealed, onToggle }: Props) {
   const [i, setI] = useState(index);
   const urls = useObjectUrls(images);
   const touchX = useRef<number | null>(null);
@@ -53,7 +67,17 @@ export function Lightbox({ images, index, onClose }: Props) {
           else setI((v) => Math.max(0, v - 1));
         }}
       >
-        <img src={urls[img.id]} alt="" />
+        <OccludedImage
+          fit
+          src={urls[img.id]}
+          width={img.width ?? 1}
+          height={img.height ?? 1}
+          masks={img.masks}
+          mode={maskMode}
+          revealed={revealed}
+          allRevealed={allRevealed}
+          onToggle={onToggle}
+        />
       </div>
       <div className="lightbox-nav">
         <button disabled={i === 0} onClick={() => setI(i - 1)}>

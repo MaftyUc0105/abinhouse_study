@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../db/seedSettings';
 import type { Scheduling } from '../db/types';
 import { addDays, daysBetween, describeDue } from '../scheduler/dates';
-import { applyRating, initialScheduling, intensity, nextInterval } from '../scheduler/scheduler';
+import { applyRating, examCap, fuzzDays, initialScheduling, intensity, nextInterval } from '../scheduler/scheduler';
 
 const cfg = DEFAULT_SETTINGS; // ladder [1,2,4,7,15,30,60]
 const T = '2026-09-17';
@@ -84,5 +84,53 @@ describe('intensity', () => {
     expect(intensity([0])).toBe('attention');
     expect(intensity([0, 2, 0])).toBe('focus');
     expect(intensity([1, 1, 1])).toBe('focus');
+  });
+});
+
+describe('fuzzDays', () => {
+  it('间隔 < 4 不抖动', () => {
+    for (const i of [1, 2, 3]) expect(fuzzDays(i, 'x')).toBe(i);
+  });
+  it('确定性，且在 ±10% / ±3 天内', () => {
+    for (const interval of [4, 7, 15, 30, 60, 120]) {
+      const range = Math.min(3, Math.max(1, Math.round(interval * 0.1)));
+      const seen = new Set<number>();
+      for (let k = 0; k < 200; k++) {
+        const v = fuzzDays(interval, `id${k}`);
+        expect(fuzzDays(interval, `id${k}`)).toBe(v);
+        expect(Math.abs(v - interval)).toBeLessThanOrEqual(range);
+        seen.add(v);
+      }
+      expect(seen.size).toBeGreaterThan(1);
+    }
+  });
+});
+
+describe('examCap', () => {
+  it('离考越近间隔越短，考后不封顶', () => {
+    expect(examCap(60, '2026-11-20', '2026-12-20')).toBe(15);
+    expect(examCap(10, '2026-12-16', '2026-12-20')).toBe(2);
+    expect(examCap(10, '2026-12-19', '2026-12-20')).toBe(1);
+    expect(examCap(10, '2026-12-20', '2026-12-20')).toBe(10);
+    expect(examCap(10, '2026-12-25', '2026-12-20')).toBe(10);
+    expect(examCap(10, '2026-01-01', null)).toBe(10);
+    expect(examCap(5, '2026-11-20', '2026-12-20')).toBe(5);
+  });
+});
+
+describe('nextInterval with context', () => {
+  it('预览与 applyRating 一致，并应用考试封顶', () => {
+    const c = { ...cfg, examDate: '2026-10-17' };
+    const s = at(5);
+    const ctx = { today: T, itemId: 'abc' };
+    const preview = nextInterval(s, 2, c, ctx);
+    expect(preview.interval).toBe(15); // 60 天被 30 天离考封顶到 15
+    const applied = applyRating(s, 2, T, c, 1, 'abc');
+    expect(applied.lastInterval).toBe(preview.interval);
+    expect(applied.dueDate).toBe(addDays(T, preview.interval));
+  });
+  it('关闭 fuzz 时与基础间隔相同', () => {
+    const c = { ...cfg, fuzz: false };
+    expect(nextInterval(at(4), 2, c, { today: T, itemId: 'q' }).interval).toBe(30);
   });
 });

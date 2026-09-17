@@ -97,4 +97,26 @@ describe('backup', () => {
     zip.file('backup.json', JSON.stringify({ app: 'other', version: 1 }));
     await expect(parseBackup(await zip.generateAsync({ type: 'blob' }))).rejects.toThrow('本应用');
   });
+
+  it('兼容第 1 版备份（无墓碑、无遮挡、设置无 updatedAt）', async () => {
+    await seed(src);
+    const zip = await JSZip.loadAsync(await exportBackup(src));
+    const json = JSON.parse(await zip.file('backup.json')!.async('string'));
+    json.version = 1;
+    delete json.tombstones;
+    for (const i of json.images) {
+      delete i.masks;
+      delete i.updatedAt;
+    }
+    delete json.settings.updatedAt;
+    delete json.settings.fuzz;
+    delete json.settings.examDate;
+    zip.file('backup.json', JSON.stringify(json));
+    const dst = fresh();
+    const r = await importBackup(dst, await zip.generateAsync({ type: 'blob' }), 'replace');
+    expect(r).toMatchObject({ notes: 1, cards: 1, images: 3, skipped: 0 });
+    const st = (await dst.settings.get('default'))!;
+    expect(st.fuzz).toBe(true);
+    expect(st.examDate).toBeNull();
+  });
 });
