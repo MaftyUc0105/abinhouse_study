@@ -16,15 +16,20 @@ npm run smoke      # 端到端冒烟测试（需先 npm run dev，用本机 Edge
 npm run build      # 产物在 dist/
 ```
 
-局域网 `http://` 地址可以用，但浏览器不允许安装为 PWA（需要 HTTPS）。想在手机上"添加到主屏幕"，请按下面部署到 GitHub Pages。
+局域网 `http://` 地址可以用，但浏览器不允许安装为 PWA（需要 HTTPS）。想在手机上"添加到主屏幕"，请使用下面的线上地址。
 
 ## 部署到 GitHub Pages
 
-1. 在 GitHub 新建仓库（例如 `abinhouse_study`），把代码推上 `main` 分支。
-2. 仓库 Settings → Pages → Build and deployment → Source 选 **GitHub Actions**。
-3. 推送后 `.github/workflows/deploy.yml` 会自动构建并发布到 `https://<用户名>.github.io/<仓库名>/`。
+线上地址：https://maftyuc0105.github.io/abinhouse_study/
 
-`vite.config.ts` 通过环境变量 `VITE_BASE` 设置子路径，工作流里已按仓库名自动填好；本地开发不用管。
+改完代码后更新线上版本：
+
+```powershell
+git add -A; git commit -m "说明"; git push
+npm run deploy     # 测试 → 按仓库名构建 → 推送 dist 到 gh-pages 分支
+```
+
+仓库 Settings → Pages 的来源是 `gh-pages` 分支根目录。手机上已安装的应用下次打开时会自动更新。
 
 ## 手机安装
 
