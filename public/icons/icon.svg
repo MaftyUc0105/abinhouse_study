@@ -1,4 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#2563eb"/>
-  <text x="32" y="46" font-size="38" font-weight="700" text-anchor="middle" fill="#fff" font-family="PingFang SC, Microsoft YaHei, sans-serif">忆</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-label="艾宾浩斯复习本">
+  <rect width="108" height="108" rx="25" fill="#17604f"/>
+  <circle cx="54" cy="27" r="7" fill="#e8b96f"/>
+  <path d="M22 41c11-5 23-4 32 3v37c-9-7-21-9-32-5V41Z" fill="#f9f5e9"/>
+  <path d="M86 41c-11-5-23-4-32 3v37c9-7 21-9 32-5V41Z" fill="#f9f5e9"/>
+  <path d="M54 44v37" stroke="#a9caba" stroke-width="3" stroke-linecap="round"/>
 </svg>

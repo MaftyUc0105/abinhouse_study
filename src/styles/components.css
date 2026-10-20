@@ -1138,3 +1138,176 @@ details summary {
   max-height: 150px;
   overflow: auto;
 }
+
+/* ---- 青黛与暖纸：视觉改版（T-003 / T-004 / T-006） ---- */
+.card {
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.card-link:active { background: var(--panel-highlight); }
+.empty { color: var(--text-2); }
+.empty-icon { color: var(--primary); }
+.section-title { color: var(--text-2); font-weight: 700; letter-spacing: 0.02em; }
+
+/* 按钮与表单 */
+.btn {
+  border-radius: 12px;
+  font-weight: 650;
+  transition: background-color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.05s;
+}
+.btn-primary { box-shadow: 0 3px 10px rgba(23, 96, 79, 0.16); }
+.btn-primary:active { box-shadow: none; }
+.btn-soft { background: var(--primary-soft); color: var(--primary); }
+.btn-ghost { color: var(--primary); }
+.btn:focus-visible,
+.chip-btn:focus-visible,
+.rating-btn:focus-visible,
+.tab:focus-visible,
+.switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.input, .textarea, .select {
+  border-radius: 12px;
+  padding: 11px 13px;
+  background: var(--surface);
+}
+.input:focus, .textarea:focus, .select:focus { box-shadow: var(--focus-ring); }
+.field label { color: var(--text-2); font-weight: 650; }
+.hint { color: var(--text-3); }
+
+/* 标签、导航与今日概览 */
+.chip { padding: 4px 11px; font-weight: 550; }
+.chip-active { box-shadow: 0 2px 8px rgba(23, 96, 79, 0.12); }
+.chip-btn { border: 1px solid transparent; }
+.badge { padding: 3px 9px; border-radius: 8px; font-weight: 700; }
+.tabbar { background: var(--surface); border-top-color: var(--border); box-shadow: 0 -3px 14px rgba(31, 58, 45, 0.045); }
+.tab { color: var(--text-2); font-size: 11px; font-weight: 600; }
+.tab.active { color: var(--primary); font-weight: 750; }
+.tab-count { background: var(--danger); font-weight: 700; }
+.banner { background: var(--primary-soft); border: 1px solid var(--border); padding: 16px 18px; }
+.banner-num { color: var(--primary); font-size: 34px; font-weight: 800; letter-spacing: -0.04em; }
+
+/* 图文和编辑工具 */
+.markdown blockquote { background: var(--panel-highlight); border-radius: 0 8px 8px 0; }
+.markdown pre, .markdown code { border-radius: 7px; }
+.thumb, .occluded { border-radius: 12px; }
+.thumb-badge { background: var(--warn); }
+.mask-cover { background: var(--warn); border-color: var(--warn); }
+.mask-open { border-color: var(--warn); background: rgba(148, 90, 28, 0.11); }
+.mask-edit { border-color: var(--warn); background: rgba(148, 90, 28, 0.58); }
+.mask-edit.is-selected { border-color: var(--danger); background: rgba(164, 61, 58, 0.58); }
+.mask-draft { border-color: var(--primary); background: rgba(23, 96, 79, 0.2); }
+.mask-toolbar button.on, .mask-toolbar button.primary { background: #276b5a; }
+
+/* 复习：四档明度逐级提升，并以不同圆角辅助识别 */
+.review-progress { height: 7px; border-radius: 999px; }
+.review-progress > div { background: var(--primary); }
+.review-title { font-size: 21px; font-weight: 700; line-height: 1.45; }
+.review-actions { background: var(--surface); border-top-color: var(--border); }
+.rating-bar { gap: 7px; }
+.rating-btn {
+  min-height: 68px;
+  padding: 8px 3px;
+  border: 1px solid transparent;
+  border-bottom-width: 4px;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.15;
+  box-shadow: 0 2px 8px rgba(19, 45, 37, 0.1);
+  transition: transform 0.08s, box-shadow 0.15s;
+}
+.rating-btn small { font-size: 10px; font-weight: 550; opacity: 0.94; }
+.rating-btn:active { box-shadow: none; }
+.rating-0 { background: #793530; border-color: #602a27; color: #ffffff; border-radius: 8px; }
+.rating-1 { background: #92571f; border-color: #744318; color: #ffffff; border-radius: 11px; }
+.rating-2 { background: #b7d8a3; border-color: #749867; color: #234032; border-radius: 15px; }
+.rating-3 { background: #e2f0eb; border-color: #85b7a9; color: #193b3a; border-radius: 19px; }
+.rating-label-0 { color: var(--danger); }
+.rating-label-1 { color: var(--warn); }
+.rating-label-2 { color: var(--ok); }
+.rating-label-3 { color: var(--info); }
+
+/* 统计、弹窗与设置 */
+.bar { background: var(--surface-2); border-radius: 999px; }
+.bar > div { background: var(--primary); border-radius: 999px; }
+.stat-tile { background: var(--surface); box-shadow: var(--shadow); padding: 14px 8px; }
+.stat-tile .num { color: var(--primary); font-size: 26px; font-weight: 800; }
+.stat-tile .lbl { color: var(--text-2); }
+.timeline-item { padding: 9px 0; }
+.dialog { border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 18px 46px rgba(8, 28, 20, 0.18); }
+.overlay { background: var(--overlay-scrim); }
+.toast { background: var(--text); color: var(--surface); box-shadow: 0 8px 24px rgba(8, 28, 20, 0.18); }
+.switch { background: var(--surface-2); }
+.switch::after { background: var(--surface); }
+.sync-status { font-weight: 600; }
+.exam-countdown { color: var(--warn); background: var(--warn-soft); border-radius: 999px; padding: 3px 9px; }
+.backup-reminder { border-color: var(--warn); }
+
+/* 每日目标：邀请、进行、达成、未达成四态 */
+.goal-card {
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+.goal-card[data-state='none'] {
+  background: var(--panel-highlight);
+  border-color: var(--border);
+  border-style: dashed;
+}
+.goal-card[data-state='active'] {
+  background: var(--surface);
+  border-color: var(--primary);
+  box-shadow: inset 4px 0 0 var(--primary), var(--shadow);
+}
+.goal-card[data-state='achieved'] {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+  box-shadow: inset 4px 0 0 var(--ok), var(--shadow);
+}
+.goal-card[data-state='missed'] {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: inset 4px 0 0 var(--warn), var(--shadow);
+}
+.goal-card-title { color: var(--text); font-size: 17px; font-weight: 800; letter-spacing: 0.01em; }
+.goal-card[data-state='achieved'] .goal-card-title { color: var(--ok); }
+.goal-card[data-state='missed'] .goal-card-title { color: var(--text-2); }
+.goal-streak {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 750;
+}
+.goal-card-hint { color: var(--text-2); font-size: 14px; line-height: 1.5; }
+.goal-card-body { gap: 13px; }
+.goal-ring-track { stroke: var(--surface-2); stroke-width: 10; }
+.goal-ring-fill { stroke: var(--primary); stroke-width: 10; }
+.goal-card[data-state='achieved'] .goal-ring-track { stroke: var(--surface); }
+.goal-card[data-state='achieved'] .goal-ring-fill { stroke: var(--ok); }
+.goal-card[data-state='missed'] .goal-ring-fill { stroke: var(--warn); }
+.goal-ring-label { color: var(--text); font-size: 18px; font-weight: 800; }
+.goal-ring-sub { color: var(--text-2); font-size: 11px; font-weight: 600; }
+.goal-card-side { gap: 5px; color: var(--text-2); line-height: 1.4; }
+.goal-task label { padding: 9px 0; }
+.goal-task input { accent-color: var(--ok); }
+.goal-task-text { color: var(--text); line-height: 1.4; }
+.goal-task.is-done .goal-task-text { color: var(--text-2); text-decoration: none; }
+.goal-actions { gap: 8px; }
+
+/* 打卡图弹窗 */
+.share-card-dialog { border-radius: 20px; }
+.share-card-preview { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; }
+.share-card-caption { background: var(--panel-highlight); border: 1px solid var(--border); border-radius: 10px; }
+.share-card-placeholder { color: var(--text-2); }
+
+@media (prefers-color-scheme: dark) {
+  .tabbar { box-shadow: 0 -3px 16px rgba(0, 0, 0, 0.18); }
+  .btn-primary { box-shadow: none; }
+  .rating-btn { box-shadow: none; }
+  .rating-0 { background: #512d2b; border-color: #b77770; color: #ffffff; }
+  .rating-1 { background: #6e4c2d; border-color: #d3a361; color: #ffffff; }
+  .rating-2 { background: #78976c; border-color: #a8c694; color: #0e251c; }
+  .rating-3 { background: #b4d6ce; border-color: #d9eee7; color: #193b3a; }
+  .mask-toolbar button.on, .mask-toolbar button.primary { background: #2a6b58; }
+}

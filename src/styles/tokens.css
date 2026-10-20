@@ -1,57 +1,61 @@
 /* =============================================================
-   设计变量（颜色、圆角、尺寸）
+   设计变量：青黛与暖纸
    负责人：GPT（美术）。详见仓库根目录 collab.md。
-   规则：可以改变量的"值"，可以新增变量；不要删除或重命名已有变量，
-         否则 base.css / components.css 以及组件会失效。
-   深色模式必须同步维护。
    ============================================================= */
 
 :root {
   color-scheme: light dark;
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-2: #eef1f5;
-  --border: #e2e6ec;
-  --text: #1a1d23;
-  --text-2: #5b6470;
-  --text-3: #8a93a0;
-  --primary: #2563eb;
+  --bg: #f5f3ec;
+  --surface: #fffdf8;
+  --surface-2: #edece3;
+  --border: #d7dcd1;
+  --text: #24332f;
+  --text-2: #4d625a;
+  --text-3: #66796f;
+  --primary: #17604f;
   --primary-text: #ffffff;
-  --primary-soft: #dbe7ff;
-  --danger: #dc2626;
-  --danger-soft: #fee2e2;
-  --warn: #d97706;
-  --warn-soft: #fef3c7;
-  --ok: #16a34a;
-  --ok-soft: #dcfce7;
-  --info: #0891b2;
-  --info-soft: #cffafe;
-  --radius: 12px;
+  --primary-soft: #dcece2;
+  --danger: #a43d3a;
+  --danger-soft: #f7e5df;
+  --warn: #945a1c;
+  --warn-soft: #f4e8d0;
+  --ok: #276b4d;
+  --ok-soft: #e1f0e2;
+  --info: #315e85;
+  --info-soft: #e0ebf3;
+  --radius: 16px;
   --tabbar-h: 60px;
   --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow: 0 3px 18px rgba(31, 58, 45, 0.055);
+  --focus-ring: 0 0 0 3px rgba(23, 96, 79, 0.18);
+  --panel-highlight: #f7f6ed;
+  --overlay-scrim: rgba(22, 36, 30, 0.54);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #101317;
-    --surface: #181c22;
-    --surface-2: #222831;
-    --border: #2c333d;
-    --text: #e8ebef;
-    --text-2: #a4adb8;
-    --text-3: #6f7986;
-    --primary: #3b82f6;
-    --primary-soft: #1e3a8a;
-    --danger: #ef4444;
-    --danger-soft: #4c1d1d;
-    --warn: #f59e0b;
-    --warn-soft: #4a3208;
-    --ok: #22c55e;
-    --ok-soft: #14351f;
-    --info: #22d3ee;
-    --info-soft: #0f3a44;
-    --shadow: none;
+    --bg: #151d1c;
+    --surface: #202c29;
+    --surface-2: #2b3934;
+    --border: #40534a;
+    --text: #e7eee6;
+    --text-2: #bfd0c3;
+    --text-3: #9eb4a5;
+    --primary: #8ed5b9;
+    --primary-text: #17372d;
+    --primary-soft: #28473b;
+    --danger: #f2aaa0;
+    --danger-soft: #4b302e;
+    --warn: #f0bc76;
+    --warn-soft: #4b3928;
+    --ok: #9fdfb5;
+    --ok-soft: #294638;
+    --info: #a9cbe8;
+    --info-soft: #293d4e;
+    --shadow: 0 3px 18px rgba(0, 0, 0, 0.17);
+    --focus-ring: 0 0 0 3px rgba(142, 213, 185, 0.22);
+    --panel-highlight: #26382f;
+    --overlay-scrim: rgba(6, 13, 10, 0.7);
   }
 }

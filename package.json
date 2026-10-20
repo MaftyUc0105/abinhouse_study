@@ -1,7 +1,7 @@
 {
   "name": "abinhouse-study",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -12,6 +12,7 @@
     "smoke": "node scripts/smoke.mjs",
     "shots": "node scripts/design-shots.mjs",
     "card": "node scripts/card-preview.mjs",
+    "icons": "node scripts/export-icons.mjs",
     "deploy": "node scripts/deploy.mjs",
     "apk": "node scripts/build-apk.mjs"
   },
