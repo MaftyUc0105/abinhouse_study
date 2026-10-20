@@ -82,7 +82,7 @@ export async function syncWithRemote(db: StudyDB, api: GitApi, onProgress: SyncP
       onProgress('下载云端数据…');
       let remoteText: string | null = null;
       const dataSha = tree.get(DATA_PATH);
-      let pulled: MergeResult = { notes: 0, cards: 0, images: 0, reviewLogs: 0, subjects: 0, deleted: 0, missingImages: 0 };
+      let pulled: MergeResult = { notes: 0, cards: 0, images: 0, reviewLogs: 0, subjects: 0, deleted: 0, missingImages: 0, goals: 0 };
       if (dataSha) {
         remoteText = utf8d.decode(await api.getBlob(dataSha));
         const raw = JSON.parse(remoteText) as Record<string, unknown>;

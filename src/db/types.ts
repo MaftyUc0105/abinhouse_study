@@ -118,6 +118,28 @@ export interface Tombstone {
   deletedAt: number;
 }
 
+/** 每日目标里的一件事，比如"过完第三章" */
+export interface GoalTask {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+/** 每天自己定的目标，当天结束时结算 */
+export interface DailyGoal {
+  /** 主键，本地日期 */
+  date: LocalDate;
+  /** 今天要完成的复习条数；0 表示不设复习目标 */
+  reviewTarget: number;
+  tasks: GoalTask[];
+  createdAt: number;
+  updatedAt: number;
+  /** 结算时间；结算后 settledReviewDone 与 achieved 固定不变 */
+  settledAt?: number;
+  settledReviewDone?: number;
+  achieved?: boolean;
+}
+
 /** 仅本机的键值数据（同步配置、状态），不参与同步和备份 */
 export interface MetaRecord {
   key: string;

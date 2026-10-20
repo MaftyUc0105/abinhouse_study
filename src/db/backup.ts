@@ -185,6 +185,7 @@ export async function importBackup(
       await db.reviewLogs.bulkAdd(s.reviewLogs as ReviewLog[]);
       await db.subjects.bulkPut(s.subjects);
       await db.tombstones.bulkPut(s.tombstones);
+      await db.dailyGoals.bulkPut(s.goals);
       if (s.settings) await db.settings.put(s.settings);
     });
     result = {

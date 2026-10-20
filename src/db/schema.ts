@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Card, ImageRecord, MetaRecord, Note, ReviewLog, Settings, Subject, Tombstone } from './types';
+import type { Card, DailyGoal, ImageRecord, MetaRecord, Note, ReviewLog, Settings, Subject, Tombstone } from './types';
 
 export class StudyDB extends Dexie {
   notes!: Table<Note, string>;
@@ -10,6 +10,7 @@ export class StudyDB extends Dexie {
   settings!: Table<Settings, string>;
   tombstones!: Table<Tombstone, string>;
   meta!: Table<MetaRecord, string>;
+  dailyGoals!: Table<DailyGoal, string>;
 
   constructor(name = 'abinhouse_study') {
     super(name);
@@ -25,11 +26,14 @@ export class StudyDB extends Dexie {
       tombstones: 'key, deletedAt',
       meta: 'key',
     });
+    this.version(3).stores({
+      dailyGoals: 'date, settledAt',
+    });
   }
 
   /** 参与同步和备份的数据表（不含 meta） */
   get dataTables() {
-    return [this.notes, this.cards, this.images, this.reviewLogs, this.subjects, this.settings, this.tombstones];
+    return [this.notes, this.cards, this.images, this.reviewLogs, this.subjects, this.settings, this.tombstones, this.dailyGoals];
   }
 }
 

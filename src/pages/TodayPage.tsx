@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BackupReminder } from '../components/BackupShare';
+import { DailyGoalCard } from '../components/DailyGoalCard';
 import { DueBadge, IntensityBadge, SubjectChip } from '../components/Badges';
 import { SyncStatus } from '../components/SyncStatus';
 import { useBadge } from '../hooks/useBadge';
@@ -45,6 +46,8 @@ export function TodayPage() {
       </div>
 
       <BackupReminder />
+
+      {!q.loading && <DailyGoalCard dueToday={q.total} />}
 
       {q.loading ? (
         <div className="empty">加载中…</div>

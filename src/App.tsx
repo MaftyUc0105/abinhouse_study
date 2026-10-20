@@ -14,11 +14,13 @@ import { db } from './db/schema';
 import { startAutoSync } from './sync/runner';
 import { useNativeBackButton } from './native/backButton';
 import { startReminderScheduler } from './native/reminders';
+import { useSettleGoals } from './hooks/useSettleGoals';
 import { UpdateNotifier } from './components/NativeSettings';
 
 function Layout() {
   const loc = useLocation();
   useNativeBackButton();
+  useSettleGoals();
   const hideTabs = loc.pathname.startsWith('/review');
   return (
     <>

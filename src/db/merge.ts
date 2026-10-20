@@ -4,7 +4,7 @@
 import { isValidLocalDate } from '../scheduler/dates';
 import type { StudyDB } from './schema';
 import { DEFAULT_SETTINGS, validateSettings } from './seedSettings';
-import type { Card, ImageRecord, Note, ReviewLog, Settings, Subject, Tombstone } from './types';
+import type { Card, DailyGoal, ImageRecord, Note, ReviewLog, Settings, Subject, Tombstone } from './types';
 
 export type ImageMeta = Omit<ImageRecord, 'blob'>;
 export type LogEntry = Omit<ReviewLog, 'id'>;
@@ -17,6 +17,8 @@ export interface Snapshot {
   subjects: Subject[];
   settings: Settings | null;
   tombstones: Tombstone[];
+  /** 第 3 版新增；读旧备份时为空数组 */
+  goals: DailyGoal[];
 }
 
 export interface MergeOptions {
@@ -32,6 +34,7 @@ export interface MergeResult {
   subjects: number;
   deleted: number;
   missingImages: number;
+  goals: number;
 }
 
 // ---------- 构建 ----------
@@ -48,7 +51,7 @@ export function imageUpdatedAt(m: Pick<ImageRecord, 'createdAt' | 'updatedAt'>):
 
 /** 读取本地全部数据，排好序，便于稳定序列化 */
 export async function buildSnapshot(db: StudyDB): Promise<{ snapshot: Snapshot; blobs: Map<string, Blob> }> {
-  const [notes, cards, images, logs, subjects, settings, tombstones] = await db.transaction('r', db.dataTables, () =>
+  const [notes, cards, images, logs, subjects, settings, tombstones, goals] = await db.transaction('r', db.dataTables, () =>
     Promise.all([
       db.notes.toArray(),
       db.cards.toArray(),
@@ -57,6 +60,7 @@ export async function buildSnapshot(db: StudyDB): Promise<{ snapshot: Snapshot; 
       db.subjects.toArray(),
       db.settings.get('default'),
       db.tombstones.toArray(),
+      db.dailyGoals.toArray(),
     ]),
   );
   const blobs = new Map<string, Blob>();
@@ -76,6 +80,7 @@ export async function buildSnapshot(db: StudyDB): Promise<{ snapshot: Snapshot; 
       subjects: subjects.sort((a, b) => (a.name < b.name ? -1 : 1)),
       settings: settings ? { ...DEFAULT_SETTINGS, ...settings } : null,
       tombstones: tombstones.sort((a, b) => (a.key < b.key ? -1 : 1)),
+      goals: goals.sort((a, b) => (a.date < b.date ? -1 : 1)),
     },
     blobs,
   };
@@ -199,6 +204,21 @@ function validLog(v: unknown, ids: Set<string>): v is LogEntry {
   );
 }
 
+function validGoal(v: unknown): v is DailyGoal {
+  return (
+    isRecord(v) &&
+    isValidLocalDate(v.date) &&
+    isNonNegInt(v.reviewTarget) &&
+    Array.isArray(v.tasks) &&
+    v.tasks.every((t) => isRecord(t) && isStr(t.id) && isStr(t.text) && typeof t.done === 'boolean') &&
+    isNum(v.createdAt) &&
+    isNum(v.updatedAt) &&
+    (v.settledAt === undefined || isNum(v.settledAt)) &&
+    (v.settledReviewDone === undefined || isNonNegInt(v.settledReviewDone)) &&
+    (v.achieved === undefined || typeof v.achieved === 'boolean')
+  );
+}
+
 function validTombstone(v: unknown): v is Tombstone {
   return isRecord(v) && isStr(v.key) && /^(note|card|image):.+/.test(v.key) && isNum(v.deletedAt);
 }
@@ -226,6 +246,7 @@ export function validateSnapshot(raw: Record<string, unknown>): { snapshot: Snap
     (s): s is Subject => isRecord(s) && isStr(s.name) && s.name.length > 0 && isNum(s.createdAt),
   );
   const tombstones = Array.isArray(raw.tombstones) ? (raw.tombstones as unknown[]).filter(validTombstone) : [];
+  const goals = Array.isArray(raw.goals) ? ((raw.goals as unknown[]).filter(validGoal) as DailyGoal[]) : [];
 
   let settings: Settings | null = null;
   if (isRecord(raw.settings)) {
@@ -233,7 +254,7 @@ export function validateSnapshot(raw: Record<string, unknown>): { snapshot: Snap
     if (!validateSettings(rs)) settings = { ...DEFAULT_SETTINGS, ...rs, id: 'default', updatedAt: isNum(rs.updatedAt) ? rs.updatedAt : 0 };
   }
 
-  return { snapshot: { notes, cards, images, reviewLogs, subjects, settings, tombstones }, skipped };
+  return { snapshot: { notes, cards, images, reviewLogs, subjects, settings, tombstones, goals }, skipped };
 }
 
 // ---------- 合并 ----------
@@ -250,7 +271,7 @@ export async function mergeSnapshot(
   fetchImage: (meta: ImageMeta) => Promise<Blob | null>,
   opts: MergeOptions,
 ): Promise<MergeResult> {
-  const result: MergeResult = { notes: 0, cards: 0, images: 0, reviewLogs: 0, subjects: 0, deleted: 0, missingImages: 0 };
+  const result: MergeResult = { notes: 0, cards: 0, images: 0, reviewLogs: 0, subjects: 0, deleted: 0, missingImages: 0, goals: 0 };
 
   // 合并后的墓碑
   const localTombs = await db.tombstones.toArray();
@@ -362,6 +383,15 @@ export async function mergeSnapshot(
       if (!(await db.subjects.get(s.name))) {
         await db.subjects.put(s);
         result.subjects += 1;
+      }
+    }
+
+    // 每日目标：同一天取 updatedAt 新者
+    for (const g of snap.goals) {
+      const cur = await db.dailyGoals.get(g.date);
+      if (!cur || g.updatedAt > cur.updatedAt) {
+        await db.dailyGoals.put(g);
+        result.goals += 1;
       }
     }
 

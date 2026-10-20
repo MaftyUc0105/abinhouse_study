@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 
 const BASE = 'http://localhost:5173/';
-const ICON = 'D:/0 AI-code/abinhouse_study/public/icons/icon-512.png';
+const ICON = path.join(process.cwd(), 'public', 'icons', 'icon-512.png');
 const OUT = process.env.SMOKE_OUT || process.cwd();
 const errors = [];
 const checks = [];
@@ -87,6 +87,26 @@ await page.click('a[href="#/"]');
 await page.waitForSelector('text=开始复习');
 check('今日显示 4 条', await page.locator('.banner-num', { hasText: '4' }).isVisible());
 check('Tab 角标显示 4', (await page.locator('.tab-count').textContent()) === '4');
+
+// ---- 每日目标：定目标 → 勾任务 → 复习达成 ----
+check('首页出现目标卡片空状态', (await page.locator('.goal-card[data-state="none"]').count()) === 1);
+await page.click('button:has-text("定今天的目标")');
+await page.waitForSelector('.goal-editor');
+check('复习目标预填今天到期数', (await page.inputValue('.goal-editor input.input')) === '4');
+await page.fill('.goal-editor input.input', '2');
+await page.fill('.goal-editor textarea', '政治第三章看完\n英语真题一套');
+await page.click('button:has-text("定下来")');
+await page.waitForSelector('.goal-card[data-state="active"]');
+check('进行中显示 0/2', (await page.locator('.goal-ring-label').textContent()) === '0/2');
+check('任务渲染 2 条', (await page.locator('.goal-task').count()) === 2);
+
+await page.locator('.goal-task input').nth(0).click();
+await page.waitForTimeout(500);
+await page.locator('.goal-task input').nth(1).click();
+await page.waitForTimeout(500);
+const tasksInDb = await page.evaluate(async () => (await window.__db.dailyGoals.toArray())[0].tasks.map((t) => t.done));
+check('勾选写入数据库', JSON.stringify(tasksInDb) === '[true,true]', JSON.stringify(tasksInDb));
+check('任务全勾后仍未达成（复习没到数）', (await page.locator('.goal-card[data-state="active"]').count()) === 1);
 await page.screenshot({ path: path.join(OUT, 'today.png'), fullPage: true });
 await page.click('text=开始复习');
 await page.waitForSelector('text=显示内容');
@@ -136,6 +156,50 @@ check('重现不重复计数', after.reviewCounts.every((c) => c === 1));
 await page.click('text=返回今日');
 await page.waitForSelector('text=今天没有待复习的内容');
 check('复习后今日清空', true);
+
+// ---- 目标达成与打卡图 ----
+await page.waitForSelector('.goal-card[data-state="achieved"]');
+check('复习够数后目标达成', (await page.locator('.goal-card-title').textContent()) === '今日目标已达成');
+check('显示连续达成天数', (await page.locator('.goal-streak').textContent()) === '连续达成 1 天');
+const goalRow = await page.evaluate(async () => (await window.__db.dailyGoals.toArray())[0]);
+check('目标当天未被提前结算', goalRow.settledAt === undefined, JSON.stringify(goalRow.settledAt));
+
+await page.click('button:has-text("生成今日打卡图")');
+await page.waitForSelector('.share-card-preview img', { timeout: 30000 });
+const card = await page.evaluate(() => {
+  const c = document.querySelector('.share-card-dialog canvas');
+  return { w: c.width, h: c.height, blank: c.toDataURL().length < 5000 };
+});
+check('打卡图 1080x1440 且非空白', card.w === 1080 && card.h === 1440 && !card.blank, JSON.stringify(card));
+const caption = (await page.locator('.share-card-caption').textContent()) ?? '';
+check('文案含达成与任务', /复习 4\/2 条 达成|复习 \d+\/2 条 达成/.test(caption) && caption.includes('政治第三章看完'), caption.slice(0, 60));
+await page.click('.share-card-dialog button:has-text("复制配套文案")');
+await page.waitForSelector('.share-card-dialog .backup-ok, .share-card-dialog .error');
+const [dlCard] = await Promise.all([
+  page.waitForEvent('download'),
+  page.click('.share-card-actions button:has-text("保存到相册目录")'),
+]);
+check('打卡图可保存为 PNG', /\.png$/.test(dlCard.suggestedFilename()), dlCard.suggestedFilename());
+await page.screenshot({ path: path.join(OUT, 'goal-share.png'), fullPage: true });
+await page.click('.share-card-dialog button:has-text("关闭")');
+await page.waitForSelector('.share-card-dialog', { state: 'detached' });
+
+// 昨天没达成的目标，跨天后应被自动结算
+await page.evaluate(async () => {
+  const d = new Date(Date.now() - 86400000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  await window.__db.dailyGoals.put({ date: y, reviewTarget: 99, tasks: [], createdAt: 1, updatedAt: 1 });
+});
+await page.reload(); // 结算发生在应用启动与跨零点，这里用刷新模拟重新打开
+await page.waitForSelector('.goal-card');
+await page.waitForTimeout(800);
+const settled = await page.evaluate(async () => {
+  const d = new Date(Date.now() - 86400000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return window.__db.dailyGoals.get(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+});
+check('昨天未达成的目标被自动结算', settled.settledAt !== undefined && settled.achieved === false, JSON.stringify(settled));
 
 // ---- 统计页 ----
 await page.click('a[href="#/stats"]');
@@ -356,6 +420,8 @@ await page.click('.dialog button:has-text("导入")');
 await page.waitForSelector('text=导入完成');
 const zipImport = (await page.locator('text=导入：笔记').textContent()) ?? '';
 check('用保存的备份恢复', /笔记 3 · 卡片 2 · 照片 2/.test(zipImport), zipImport);
+const goalsAfterRestore = await page.evaluate(async () => (await window.__db.dailyGoals.toArray()).length);
+check('每日目标随备份一起恢复', goalsAfterRestore >= 2, String(goalsAfterRestore));
 check('设置页只有一个保存备份按钮', (await page.locator('button:has-text("保存备份到手机")').count()) === 1);
 
 await page.click('a[href="#/settings"]');

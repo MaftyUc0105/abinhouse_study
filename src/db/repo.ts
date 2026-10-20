@@ -5,11 +5,14 @@
 import { nanoid } from 'nanoid';
 import { markDirty } from '../sync/changes';
 import { applyRating, initialScheduling, pickScheduling } from '../scheduler/scheduler';
+import { emptyGoal, hasGoal, settleGoal } from '../scheduler/goals';
 import { today } from '../scheduler/dates';
 import { db as defaultDb, type StudyDB } from './schema';
 import { ensureSettings, validateSettings } from './seedSettings';
 import type {
   Card,
+  DailyGoal,
+  GoalTask,
   ImageRecord,
   ImageSlot,
   ItemType,
@@ -302,6 +305,80 @@ export function createRepo(db: StudyDB = defaultDb) {
     return next;
   }
 
+  // ---------- 每日目标 ----------
+
+  /** 某天实际完成的复习次数 */
+  async function countReviewsOn(date: LocalDate): Promise<number> {
+    return db.reviewLogs.where('date').equals(date).count();
+  }
+
+  async function getGoal(date: LocalDate): Promise<DailyGoal | undefined> {
+    return db.dailyGoals.get(date);
+  }
+
+  /** 新建或修改某天的目标；已结算的当天目标重新编辑会取消结算状态 */
+  async function saveGoal(
+    date: LocalDate,
+    input: { reviewTarget: number; tasks: GoalTask[] },
+  ): Promise<DailyGoal> {
+    const now = Date.now();
+    const prev = await db.dailyGoals.get(date);
+    const next: DailyGoal = {
+      ...(prev ?? emptyGoal(date, now)),
+      reviewTarget: Math.max(0, Math.round(input.reviewTarget) || 0),
+      tasks: input.tasks.map((t) => ({ ...t, text: t.text.trim() })).filter((t) => t.text.length > 0),
+      updatedAt: now,
+      settledAt: undefined,
+      settledReviewDone: undefined,
+      achieved: undefined,
+    };
+    await db.dailyGoals.put(next);
+    await touched();
+    return next;
+  }
+
+  async function setGoalTaskDone(date: LocalDate, taskId: string, done: boolean): Promise<void> {
+    await db.transaction('rw', db.dailyGoals, async () => {
+      const g = await db.dailyGoals.get(date);
+      if (!g) return;
+      await db.dailyGoals.put({
+        ...g,
+        tasks: g.tasks.map((t) => (t.id === taskId ? { ...t, done } : t)),
+        updatedAt: Date.now(),
+      });
+    });
+    await touched();
+  }
+
+  async function deleteGoal(date: LocalDate): Promise<void> {
+    await db.dailyGoals.delete(date);
+    await touched();
+  }
+
+  /** 手动结算某天（通常是今天） */
+  async function settleGoalFor(date: LocalDate): Promise<DailyGoal | undefined> {
+    const g = await db.dailyGoals.get(date);
+    if (!hasGoal(g) || g.settledAt !== undefined) return g;
+    const next = settleGoal(g, await countReviewsOn(date), Date.now());
+    await db.dailyGoals.put(next);
+    await touched();
+    return next;
+  }
+
+  /** 把今天之前所有没结算的目标结算掉；返回结算条数 */
+  async function settleDueGoals(todayDate: LocalDate): Promise<number> {
+    const pending = (await db.dailyGoals.toArray()).filter(
+      (g) => g.date < todayDate && g.settledAt === undefined && hasGoal(g),
+    );
+    if (pending.length === 0) return 0;
+    const now = Date.now();
+    const settled: DailyGoal[] = [];
+    for (const g of pending) settled.push(settleGoal(g, await countReviewsOn(g.date), now));
+    await db.dailyGoals.bulkPut(settled);
+    await touched();
+    return settled.length;
+  }
+
   /** 清空本机数据（不写墓碑：之后再同步会从云端恢复） */
   async function clearAll() {
     await db.transaction('rw', allTables, async () => {
@@ -325,6 +402,13 @@ export function createRepo(db: StudyDB = defaultDb) {
     undoReview,
     getSettings,
     updateSettings,
+    countReviewsOn,
+    getGoal,
+    saveGoal,
+    setGoalTaskDone,
+    deleteGoal,
+    settleGoalFor,
+    settleDueGoals,
     clearAll,
   };
 }
