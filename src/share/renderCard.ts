@@ -104,11 +104,34 @@ export function drawCard(canvas: HTMLCanvasElement, data: ShareCardData, theme: 
   y = y + theme.text.weekday.size + 14 + theme.sectionGap;
 
   // ---- 主面板 ----
+  // 先量内容高度，面板按内容收缩并在剩余空间里居中。任务少时不会留一大片空白，
+  // 任务多时撑到可用高度上限。画布尺寸始终是 1080×1440，方便发小红书。
   const panel = theme.panel;
   const panelX = P;
   const panelW = W - P * 2;
-  const panelY = y;
-  const panelH = H - P - theme.text.watermark.size - 28 - panelY;
+  const panelTop = y;
+  const availableH = H - P - theme.text.watermark.size - 28 - panelTop;
+
+  const shownTasks = data.tasks.slice(0, theme.tasks.max);
+  const overflowTasks = data.tasks.length - shownTasks.length;
+  const tasksBlockH =
+    shownTasks.length === 0
+      ? 0
+      : theme.sectionGap +
+        shownTasks.length * theme.tasks.rowHeight +
+        (overflowTasks > 0 ? theme.text.statLabel.size + 20 : 0);
+  const contentH =
+    panel.padding * 2 +
+    theme.statusBadge.height +
+    theme.sectionGap +
+    theme.ring.radius * 2 +
+    tasksBlockH +
+    theme.sectionGap +
+    24 +
+    theme.stats.height;
+  const panelH = Math.min(availableH, Math.max(contentH, availableH * 0.62));
+  const panelY = panelTop + Math.max(0, (availableH - panelH) / 2);
+
   ctx.fillStyle = panel.fill;
   roundRect(ctx, panelX, panelY, panelW, panelH, panel.radius);
   ctx.fill();
@@ -134,16 +157,8 @@ export function drawCard(canvas: HTMLCanvasElement, data: ShareCardData, theme: 
   ctx.fillText(badgeLabel, innerX + badge.paddingX, cy + badge.height / 2 + theme.text.statusBadge.size * 0.36);
   cy += badge.height + theme.sectionGap;
 
-  // 统计区固定贴在面板底部；中间内容在剩余空间里垂直居中，任务少时不会留一大块空白
+  // 统计区贴面板底部；中间内容在剩余空间里垂直居中
   const statsY = panelY + panelH - panel.padding - theme.stats.height;
-  const shownTasks = data.tasks.slice(0, theme.tasks.max);
-  const overflowTasks = data.tasks.length - shownTasks.length;
-  const tasksBlockH =
-    shownTasks.length === 0
-      ? 0
-      : theme.sectionGap +
-        shownTasks.length * theme.tasks.rowHeight +
-        (overflowTasks > 0 ? theme.text.statLabel.size + 12 : 0);
   const middleH = theme.ring.radius * 2 + tasksBlockH;
   const freeSpace = statsY - 24 - theme.sectionGap - cy - middleH;
   if (freeSpace > 0) cy += freeSpace / 2;
@@ -219,13 +234,15 @@ export function drawCard(canvas: HTMLCanvasElement, data: ShareCardData, theme: 
       applyText(ctx, theme.text.taskText, theme);
       if (!t.done) ctx.fillStyle = tk.todoColor;
       const tx = innerX + tk.boxSize + 22;
-      ctx.fillText(fitText(ctx, t.text, innerW - (tk.boxSize + 22)), tx, cy + tk.rowHeight / 2 + theme.text.taskText.size * 0.36);
+      // 右侧再留 16px，长标题不会顶到面板边缘
+      const textMax = innerW - (tk.boxSize + 22) - 16;
+      ctx.fillText(fitText(ctx, t.text, textMax), tx, cy + tk.rowHeight / 2 + theme.text.taskText.size * 0.36);
       cy += tk.rowHeight;
     }
     if (overflowTasks > 0) {
       applyText(ctx, theme.text.statLabel, theme);
-      ctx.fillText(`还有 ${overflowTasks} 项`, innerX, cy + theme.text.statLabel.size);
-      cy += theme.text.statLabel.size + 12;
+      ctx.fillText(`还有 ${overflowTasks} 项`, innerX + tk.boxSize + 22, cy + 8 + theme.text.statLabel.size);
+      cy += theme.text.statLabel.size + 20;
     }
   }
 
