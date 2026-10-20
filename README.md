@@ -48,7 +48,8 @@ npm run deploy     # 测试 → 按仓库名构建 → 推送 dist 到 gh-pages 
 
 ### 打包 APK（开发者）
 
-开发环境在 D 盘：JDK 21 `D:\dev\jdk21`，Android SDK `D:\dev\android-sdk`，Gradle 缓存 `D:\dev\gradle-home`（`init.d/mirrors.gradle` 让 Maven 中央仓库走阿里云镜像）。
+开发环境放在项目旁边的 `D:\0_AI-code\_toolchain\`：JDK 21 在 `jdk21`，Android SDK 在 `android-sdk`，Gradle 缓存在 `gradle-home`（其中 `init.d/mirrors.gradle` 让 Maven 中央仓库走阿里云镜像）。
+可以用环境变量 `ABINHOUSE_TOOLCHAIN` 指到别处。**这个目录删掉不影响代码**，只是下次打包要重新下载约 2.5 GB。
 
 ```powershell
 # 先把 package.json 的 version 改大（如 0.2.1），再：
@@ -56,7 +57,13 @@ npm run apk                  # 测试 → 构建 → 同步 → 签名打包，�
 npm run apk -- --publish     # 同时发布 GitHub Release，App 内"检查更新"会读到
 ```
 
-**签名密钥必须备份**：`D:\dev\keys\abinhouse-release.jks` 和 `D:\dev\keys\keystore.properties`（含密码）。丢失后新版本无法覆盖安装，只能卸载重装（数据需先备份）。建议复制到 U 盘或网盘加密保存。`android/keystore.properties` 已被 git 忽略。
+**签名密钥必须备份**：`D:\0_AI-code\abinhouse_study_keys\` 里的 `abinhouse-release.jks` 和 `keystore.properties`（含密码）。
+
+> 这是整个项目里唯一删了就补不回来的东西。丢失后新版本无法覆盖安装，用户只能先备份数据、卸载、再重装。
+> 2026 年 10 月已经因为误删 `D:\dev` 丢过一次，现在这把是第二把密钥。
+> **请复制一份到网盘或 U 盘**，不要只留在本机。
+
+`android/keystore.properties` 与 `*.jks` 都已被 git 忽略，不会进仓库。
 
 ## 网页版安装
 

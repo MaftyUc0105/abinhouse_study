@@ -10,15 +10,22 @@ const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const version = pkg.version;
 const publish = process.argv.includes('--publish');
 
-// 开发环境都在 D 盘；可用环境变量覆盖
+// 工具链放在项目旁边的 _toolchain，别再放进名字像临时文件的目录
+const TOOLCHAIN = process.env.ABINHOUSE_TOOLCHAIN || path.resolve(root, '..', '_toolchain');
+const sdkDir = process.env.ANDROID_HOME || path.join(TOOLCHAIN, 'android-sdk');
 const env = {
   ...process.env,
-  JAVA_HOME: process.env.JAVA_HOME_21 || 'D:\\dev\\jdk21',
-  ANDROID_HOME: process.env.ANDROID_HOME || 'D:\\dev\\android-sdk',
-  ANDROID_SDK_ROOT: process.env.ANDROID_HOME || 'D:\\dev\\android-sdk',
-  GRADLE_USER_HOME: process.env.GRADLE_USER_HOME || 'D:\\dev\\gradle-home',
+  JAVA_HOME: process.env.JAVA_HOME_21 || path.join(TOOLCHAIN, 'jdk21'),
+  ANDROID_HOME: sdkDir,
+  ANDROID_SDK_ROOT: sdkDir,
+  GRADLE_USER_HOME: process.env.GRADLE_USER_HOME || path.join(TOOLCHAIN, 'gradle-home'),
   VITE_BASE: '/',
 };
+if (!fs.existsSync(env.JAVA_HOME) || !fs.existsSync(sdkDir)) {
+  console.error(`缺少安卓开发环境：${TOOLCHAIN}`);
+  console.error('这个目录删掉只是要重新下载约 2.5 GB，代码不受影响。重建步骤见 README 的「打包 APK」一节。');
+  process.exit(1);
+}
 // Windows 上环境变量名是 Path，不能再额外加一个 PATH
 const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path') ?? 'PATH';
 env[pathKey] = `${path.join(env.JAVA_HOME, 'bin')}${path.delimiter}${env[pathKey]}`;
@@ -26,8 +33,23 @@ env[pathKey] = `${path.join(env.JAVA_HOME, 'bin')}${path.delimiter}${env[pathKey
 const run = (cmd, opts = {}) => execSync(cmd, { stdio: 'inherit', env, ...opts });
 
 if (!fs.existsSync('android/keystore.properties')) {
-  console.error('缺少 android/keystore.properties（签名配置），无法打正式版。备份位置：D:\\dev\\keys\\keystore.properties');
+  console.error('缺少 android/keystore.properties（签名配置），无法打正式版。备份位置见 README 的「签名密钥」一节。');
   process.exit(1);
+}
+{
+  // 密钥文件丢了就提前报错，别等 Gradle 跑到一半才失败
+  const props = Object.fromEntries(
+    fs
+      .readFileSync('android/keystore.properties', 'utf8')
+      .split(/\r?\n/)
+      .filter((l) => l.includes('='))
+      .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]),
+  );
+  if (!props.storeFile || !fs.existsSync(props.storeFile)) {
+    console.error(`签名密钥不存在：${props.storeFile}`);
+    console.error('没有原始密钥就无法发布能覆盖安装的新版本，只能重新生成并让用户卸载重装。');
+    process.exit(1);
+  }
 }
 fs.writeFileSync('android/local.properties', `sdk.dir=${env.ANDROID_HOME.replace(/\\/g, '\\\\')}\n`);
 
